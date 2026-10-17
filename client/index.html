@@ -7,10 +7,12 @@
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="/socket.io/socket.io.js"></script>
   <style>
-    body { margin: 0; padding: 0; overflow: hidden; background: #222; touch-action: none; font-family: sans-serif; }
+    body { margin: 0; padding: 0; overflow: hidden; background: #222; font-family: sans-serif; -webkit-user-select: none; user-select: none; }
     canvas { display: block; width: 100vw; height: 100vh; }
     #hud { position: fixed; top: 10px; left: 10px; color: white; font-size: 18px; font-weight: bold; text-shadow: 1px 1px 2px black; z-index: 10; }
-    .joy { position: fixed; bottom: 30px; width: 120px; height: 120px; border-radius: 50%; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.3); z-index: 10; }
+    
+    /* Стили джойстиков */
+    .joy { position: fixed; bottom: 30px; width: 120px; height: 120px; border-radius: 50%; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.3); z-index: 10; touch-action: none; }
     #joy-left { left: 30px; }
     #joy-right { right: 30px; background: rgba(255,0,0,0.1); border-color: rgba(255,0,0,0.3); }
     .knob { position: absolute; top: 35px; left: 35px; width: 50px; height: 50px; border-radius: 50%; background: rgba(255,255,255,0.5); pointer-events: none; }
@@ -36,6 +38,7 @@
     let allPlayers = [];
     let socket = null;
 
+    // --- АВТОРИЗАЦИЯ И СЕТЬ ---
     fetch('/api/auth', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
@@ -55,92 +58,92 @@
         myPlayer.x = state.x; myPlayer.y = state.y;
       });
 
-      // Синхронизация игроков (мы обновляем ТОЛЬКО других)
       socket.on('zoneState', (players) => {
         allPlayers = players;
       });
       
-      socket.on('damaged', ({ hp }) => { myPlayer.hp = hp; document.getElementById('hp-val').innerText = Math.max(0, Math.round(hp)); });
+      socket.on('damaged', ({ hp }) => { 
+        myPlayer.hp = hp; 
+        document.getElementById('hp-val').innerText = Math.max(0, Math.round(hp)); 
+      });
     });
 
-    // ---- ДЖОЙСТИКИ ----
+    // --- УПРАВЛЕНИЕ (POINTER EVENTS) ---
     let moveVec = { x: 0, y: 0 };
     let aimVec = { x: 0, y: 0 };
     let lastMoveSent = 0;
 
-function setupJoystick(joyId, knobId, onChange) {
-  const joy = document.getElementById(joyId);
-  const knob = document.getElementById(knobId);
-  let activeTouchId = null; // Запоминаем, какой именно палец нажат
-  let center = { x: 0, y: 0 };
+    function setupJoystick(joyId, knobId, onChange) {
+      const joy = document.getElementById(joyId);
+      const knob = document.getElementById(knobId);
+      let pointerId = null;
+      let center = { x: 0, y: 0 };
 
-  joy.addEventListener('touchstart', (e) => {
-    // Берем первый палец, который коснулся этого джойстика
-    const touch = e.changedTouches[0];
-    activeTouchId = touch.identifier;
-    
-    const rect = joy.getBoundingClientRect();
-    center = { x: rect.left + rect.width/2, y: rect.top + rect.height/2 };
-    handleTouch(touch);
-    e.preventDefault(); // Запрещаем браузеру скроллить экран
-  });
+      joy.addEventListener('pointerdown', (e) => {
+        pointerId = e.pointerId;
+        joy.setPointerCapture(e.pointerId); // Захватываем палец
+        const rect = joy.getBoundingClientRect();
+        center = { x: rect.left + rect.width/2, y: rect.top + rect.height/2 };
+        handleMove(e);
+      });
 
-  joy.addEventListener('touchmove', (e) => {
-    // Ищем среди всех пальцев на экране именно наш
-    for (let i = 0; i < e.touches.length; i++) {
-      if (e.touches[i].identifier === activeTouchId) {
-        handleTouch(e.touches[i]);
-        break;
+      joy.addEventListener('pointermove', (e) => {
+        if (e.pointerId === pointerId) handleMove(e);
+      });
+
+      joy.addEventListener('pointerup', (e) => {
+        if (e.pointerId === pointerId) {
+          pointerId = null;
+          knob.style.transform = `translate(0px, 0px)`;
+          onChange(0, 0);
+        }
+      });
+      
+      joy.addEventListener('pointercancel', (e) => {
+        if (e.pointerId === pointerId) {
+          pointerId = null;
+          knob.style.transform = `translate(0px, 0px)`;
+          onChange(0, 0);
+        }
+      });
+
+      function handleMove(e) {
+        let dx = e.clientX - center.x;
+        let dy = e.clientY - center.y;
+        const dist = Math.hypot(dx, dy);
+        const maxDist = 35;
+        if (dist > maxDist) { 
+          dx = (dx/dist)*maxDist; 
+          dy = (dy/dist)*maxDist; 
+        }
+        knob.style.transform = `translate(${dx}px, ${dy}px)`;
+        onChange(dx/maxDist, dy/maxDist);
       }
     }
-    e.preventDefault();
-  });
 
-  joy.addEventListener('touchend', (e) => {
-    // Проверяем, что оторвали именно тот палец, который управлял
-    for (let i = 0; i < e.changedTouches.length; i++) {
-      if (e.changedTouches[i].identifier === activeTouchId) {
-        activeTouchId = null;
-        knob.style.transform = `translate(0px, 0px)`;
-        onChange(0, 0);
-        break;
-      }
-    }
-  });
+    setupJoystick('joy-left', 'knob-left', (x, y) => { moveVec = { x, y }; });
+    setupJoystick('joy-right', 'knob-right', (x, y) => {
+      aimVec = { x, y };
+      if (x !== 0 || y !== 0) myPlayer.angle = Math.atan2(y, x);
+    });
 
-  function handleTouch(touch) {
-    let dx = touch.clientX - center.x; 
-    let dy = touch.clientY - center.y;
-    const dist = Math.hypot(dx, dy); 
-    const maxDist = 35;
-    if (dist > maxDist) { 
-      dx = (dx/dist)*maxDist; 
-      dy = (dy/dist)*maxDist; 
-    }
-    knob.style.transform = `translate(${dx}px, ${dy}px)`;
-    onChange(dx/maxDist, dy/maxDist);
-  }
-}
-    // ---- ИГРОВОЙ ЦИКЛ ----
+    // --- ИГРОВОЙ ЦИКЛ ---
     function loop() {
-      // 1. Двигаем персонажа
       const speed = 0.3;
       myPlayer.x += moveVec.x * speed;
       myPlayer.y += moveVec.y * speed;
 
-      // 2. Отправляем на сервер
       const now = Date.now();
       if (socket && socket.connected && now - lastMoveSent > 50) {
         socket.emit('move', { x: myPlayer.x, y: myPlayer.y, angle: myPlayer.angle });
         lastMoveSent = now;
       }
 
-      // 3. Отрисовка
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       const cx = canvas.width / 2;
       const cy = canvas.height / 2;
 
-      // Сетка (двигается вместе с нами!)
+      // Движущаяся сетка
       ctx.strokeStyle = '#333'; ctx.lineWidth = 1;
       ctx.beginPath();
       const gridSize = 40;
@@ -154,21 +157,20 @@ function setupJoystick(joyId, knobId, onChange) {
       }
       ctx.stroke();
 
-      // Рисуем других игроков
+      // Другие игроки
       allPlayers.forEach(p => {
         if (p.id === myPlayer.id) return;
         const px = cx + (p.x - myPlayer.x) * gridSize;
         const py = cy + (p.y - myPlayer.y) * gridSize;
-        
         ctx.fillStyle = '#ff5555'; ctx.beginPath(); ctx.arc(px, py, 15, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = 'white'; ctx.font = '12px sans-serif'; ctx.textAlign = 'center';
         ctx.fillText('P' + p.id, px, py - 20);
       });
 
-      // Рисуем себя (всегда в центре)
+      // Мой персонаж
       ctx.fillStyle = '#55ff55'; ctx.beginPath(); ctx.arc(cx, cy, 15, 0, Math.PI * 2); ctx.fill();
       
-      // Направление взгляда
+      // Прицел
       ctx.strokeStyle = 'white'; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.moveTo(cx, cy);
       ctx.lineTo(cx + Math.cos(myPlayer.angle) * 25, cy + Math.sin(myPlayer.angle) * 25); ctx.stroke();
