@@ -68,39 +68,59 @@
     let aimVec = { x: 0, y: 0 };
     let lastMoveSent = 0;
 
-    function setupJoystick(joyId, knobId, onChange) {
-      const joy = document.getElementById(joyId);
-      const knob = document.getElementById(knobId);
-      let active = false;
-      let center = { x: 0, y: 0 };
+function setupJoystick(joyId, knobId, onChange) {
+  const joy = document.getElementById(joyId);
+  const knob = document.getElementById(knobId);
+  let activeTouchId = null; // Запоминаем, какой именно палец нажат
+  let center = { x: 0, y: 0 };
 
-      joy.addEventListener('touchstart', (e) => {
-        active = true; const rect = joy.getBoundingClientRect();
-        center = { x: rect.left + rect.width/2, y: rect.top + rect.height/2 };
-        handleTouch(e);
-      });
-      joy.addEventListener('touchmove', (e) => { if(active) handleTouch(e); });
-      joy.addEventListener('touchend', () => {
-        active = false; knob.style.transform = `translate(0px, 0px)`; onChange(0, 0);
-      });
+  joy.addEventListener('touchstart', (e) => {
+    // Берем первый палец, который коснулся этого джойстика
+    const touch = e.changedTouches[0];
+    activeTouchId = touch.identifier;
+    
+    const rect = joy.getBoundingClientRect();
+    center = { x: rect.left + rect.width/2, y: rect.top + rect.height/2 };
+    handleTouch(touch);
+    e.preventDefault(); // Запрещаем браузеру скроллить экран
+  });
 
-      function handleTouch(e) {
-        e.preventDefault();
-        const touch = e.touches[0];
-        let dx = touch.clientX - center.x; let dy = touch.clientY - center.y;
-        const dist = Math.hypot(dx, dy); const maxDist = 35;
-        if (dist > maxDist) { dx = (dx/dist)*maxDist; dy = (dy/dist)*maxDist; }
-        knob.style.transform = `translate(${dx}px, ${dy}px)`;
-        onChange(dx/maxDist, dy/maxDist);
+  joy.addEventListener('touchmove', (e) => {
+    // Ищем среди всех пальцев на экране именно наш
+    for (let i = 0; i < e.touches.length; i++) {
+      if (e.touches[i].identifier === activeTouchId) {
+        handleTouch(e.touches[i]);
+        break;
       }
     }
+    e.preventDefault();
+  });
 
-    setupJoystick('joy-left', 'knob-left', (x, y) => { moveVec = { x, y }; });
-    setupJoystick('joy-right', 'knob-right', (x, y) => {
-      aimVec = { x, y };
-      if (x !== 0 || y !== 0) myPlayer.angle = Math.atan2(y, x);
-    });
+  joy.addEventListener('touchend', (e) => {
+    // Проверяем, что оторвали именно тот палец, который управлял
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      if (e.changedTouches[i].identifier === activeTouchId) {
+        activeTouchId = null;
+        knob.style.transform = `translate(0px, 0px)`;
+        onChange(0, 0);
+        break;
+      }
+    }
+  });
 
+  function handleTouch(touch) {
+    let dx = touch.clientX - center.x; 
+    let dy = touch.clientY - center.y;
+    const dist = Math.hypot(dx, dy); 
+    const maxDist = 35;
+    if (dist > maxDist) { 
+      dx = (dx/dist)*maxDist; 
+      dy = (dy/dist)*maxDist; 
+    }
+    knob.style.transform = `translate(${dx}px, ${dy}px)`;
+    onChange(dx/maxDist, dy/maxDist);
+  }
+}
     // ---- ИГРОВОЙ ЦИКЛ ----
     function loop() {
       // 1. Двигаем персонажа
