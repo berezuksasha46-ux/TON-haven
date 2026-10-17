@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+  <canvas id="game" style="width:100vw;height:100vh;display:block"></canvas>
+  <div id="hp" style="position:fixed;top:10px;left:10px;color:#fff;font:16px sans-serif">HP</div>
+  <script>
+    const tg = window.Telegram?.WebApp;
+    if (tg) { tg.ready(); tg.expand(); }
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    canvas.width = innerWidth; canvas.height = innerHeight;
+
+    // Авторизация
+    fetch('/api/auth', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        initData: tg?.initData || '',
+        devTgId: tg ? null : Date.now() % 100000
+      })
+    }).then(r => r.json()).then(async ({ token, player }) => {
+      if (!token) return alert('Auth failed');
+      const socket = io({ auth: { playerId: player.id } });
+      socket.on('welcome', ({ state }) => {
+        document.getElementById('hp').textContent = `HP ${state.hp}/${state.maxHp}`;
+        // Простейший рендер: рисуем квадрат игрока
+        ctx.fillStyle = '#4f4';
+        ctx.fillRect(canvas.width/2 - 20, canvas.height/2 - 20, 40, 40);
+      });
+      socket.on('zoneState', (players) => {
+        ctx.clearRect(0,0,canvas.width,canvas.height);
+        players.forEach(p => {
+          ctx.fillStyle = p.id === player.id ? '#4f4' : '#f44';
+          ctx.fillRect(canvas.width/2 + (p.x - state.x)*20, canvas.height/2 + (p.y - state.y)*20, 40, 40);
+        });
+      });
+    });
+  </script>
+</body>
+</html>
