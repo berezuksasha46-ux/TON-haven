@@ -193,14 +193,67 @@ export function initSockets(httpServer) {
       io.to(String(playerId)).emit('islandUpdated', { data });
     });
 
-    /* ---------- STATION / CRAFT ---------- */
+        /* ---------- STATION / CRAFT ---------- */
     socket.on('craft', async ({ recipeId, stationItemId }) => {
       const inv = (await pool.query(`SELECT item_id, qty FROM inventory WHERE player_id=$1`, [playerId])).rows;
       const res = canCraft(inv, recipeId, stationItemId);
       if (!res.ok) return socket.emit('craftResult', res);
 
+      // Списываем ресурсы
       for (const [id, qty] of Object.entries(res.recipe.cost)) {
         await pool.query(
-          `UPDATE inventory SET qty=qty-$1
+          `UPDATE inventory SET qty=qty-$1 
            WHERE id=(SELECT id FROM inventory WHERE player_id=$2 AND item_id=$3 AND qty>=$1 LIMIT 1)`,
-          [qty, playerId,
+          [qty, playerId, id]
+        );
+      }
+      
+      // Выдаем скрафченный предмет
+      await pool.query(`INSERT INTO inventory(player_id,item_id,qty) VALUES($1,$2,1)`, [playerId, res.recipe.gives]);
+      socket.emit('craftResult', { ok: true, gives: res.recipe.gives });
+    });
+
+    /* ---------- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---------- */
+    // (Они должны быть внутри io.on('connection'), поэтому пишем их здесь)
+
+    function joinZone(zone, st) {
+      if (!zones.has(zone)) zones.set(zone, new Map());
+      zones.get(zone).set(st.id, st);
+      socket.join('zone:' + zone);
+    }
+
+    function leaveZone() {
+      const map = zones.get(state.zone);
+      if (map) map.delete(state.id);
+      socket.leave('zone:' + state.zone);
+      if (state.zone === 'island') {
+        for (const [room, m] of islands) {
+          if (m.delete(state.id)) { 
+            if (islands.has(room)) io.to(room).emit('islandState', [...m.values()]); 
+            break; 
+          }
+        }
+      }
+    }
+
+    function broadcastZone() {
+      const map = zones.get(state.zone);
+      if (map) io.to('zone:' + state.zone).emit('zoneState', [...map.values()]);
+    }
+
+    function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+
+    async function handleDeath(victim, killer) {
+      victim.hp = victim.maxHp;
+      const sp = spawnPointForZone('hub', victim.id);
+      victim.x = sp.x; victim.y = sp.y; victim.zone = 'hub';
+      
+      await pool.query(`UPDATE players SET hp=$1 WHERE id=$2`, [victim.hp, victim.id]);
+      if (killer) await onPlayerKill(killer.id, victim.id);
+      
+      io.to(String(victim.id)).emit('died', { respawn: 'hub' });
+      broadcastZone();
+    }
+
+  }); // <-- Эта скобка закрывает io.on('connection', async (socket) => {
+} // <-- Эта скобка закрывает export function initSockets(httpServer) {
