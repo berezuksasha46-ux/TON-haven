@@ -9,8 +9,8 @@
   <style>
     body { margin: 0; padding: 0; overflow: hidden; background: #222; touch-action: none; font-family: sans-serif; }
     canvas { display: block; width: 100vw; height: 100vh; }
-    #hud { position: fixed; top: 10px; left: 10px; color: white; font-size: 18px; font-weight: bold; text-shadow: 1px 1px 2px black; }
-    .joy { position: fixed; bottom: 30px; width: 120px; height: 120px; border-radius: 50%; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.3); }
+    #hud { position: fixed; top: 10px; left: 10px; color: white; font-size: 18px; font-weight: bold; text-shadow: 1px 1px 2px black; z-index: 10; }
+    .joy { position: fixed; bottom: 30px; width: 120px; height: 120px; border-radius: 50%; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.3); z-index: 10; }
     #joy-left { left: 30px; }
     #joy-right { right: 30px; background: rgba(255,0,0,0.1); border-color: rgba(255,0,0,0.3); }
     .knob { position: absolute; top: 35px; left: 35px; width: 50px; height: 50px; border-radius: 50%; background: rgba(255,255,255,0.5); pointer-events: none; }
@@ -18,10 +18,8 @@
 </head>
 <body>
   <div id="hud">HP: <span id="hp-val">100</span>/100</div>
-  
   <div id="joy-left" class="joy"><div class="knob" id="knob-left"></div></div>
   <div id="joy-right" class="joy"><div class="knob" id="knob-right"></div></div>
-
   <canvas id="game"></canvas>
 
   <script>
@@ -34,50 +32,36 @@
     window.addEventListener('resize', resize);
     resize();
 
-    let myPlayer = { x: 0, y: 0, angle: 0, hp: 100, maxHp: 100 };
+    let myPlayer = { id: 0, x: 0, y: 0, angle: 0, hp: 100, maxHp: 100 };
     let allPlayers = [];
     let socket = null;
 
-    // Авторизация
     fetch('/api/auth', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({
-        initData: tg?.initData || '',
-        devTgId: tg ? null : Date.now() % 100000
-      })
+      body: JSON.stringify({ initData: tg?.initData || '', devTgId: tg ? null : Date.now() % 100000 })
     })
     .then(r => r.json())
     .then(({ token, player }) => {
-      if (!token) {
-        alert('Ошибка авторизации. Проверьте базу данных и токен бота.');
-        return;
-      }
+      if (!token) return alert('Ошибка БД! Проверьте DATABASE_URL.');
+      
+      myPlayer.id = player.id;
       myPlayer.hp = player.hp; myPlayer.maxHp = player.max_hp;
       document.getElementById('hp-val').innerText = myPlayer.hp;
       
-      // Подключение к серверу
       socket = io({ auth: { playerId: player.id } });
       
       socket.on('welcome', ({ state }) => {
-        myPlayer = { ...myPlayer, ...state };
-        updateUI();
+        myPlayer.x = state.x; myPlayer.y = state.y;
       });
 
+      // Синхронизация игроков (мы обновляем ТОЛЬКО других)
       socket.on('zoneState', (players) => {
         allPlayers = players;
       });
       
-      socket.on('damaged', ({ hp }) => { myPlayer.hp = hp; updateUI(); });
-    })
-    .catch(err => {
-      console.error(err);
-      alert('Ошибка сети. Возможно, сервер еще просыпается. Подождите минуту.');
+      socket.on('damaged', ({ hp }) => { myPlayer.hp = hp; document.getElementById('hp-val').innerText = Math.max(0, Math.round(hp)); });
     });
-
-    function updateUI() {
-      document.getElementById('hp-val').innerText = Math.max(0, Math.round(myPlayer.hp));
-    }
 
     // ---- ДЖОЙСТИКИ ----
     let moveVec = { x: 0, y: 0 };
@@ -91,97 +75,83 @@
       let center = { x: 0, y: 0 };
 
       joy.addEventListener('touchstart', (e) => {
-        active = true;
-        const rect = joy.getBoundingClientRect();
+        active = true; const rect = joy.getBoundingClientRect();
         center = { x: rect.left + rect.width/2, y: rect.top + rect.height/2 };
         handleTouch(e);
       });
       joy.addEventListener('touchmove', (e) => { if(active) handleTouch(e); });
       joy.addEventListener('touchend', () => {
-        active = false;
-        knob.style.transform = `translate(0px, 0px)`;
-        onChange(0, 0);
+        active = false; knob.style.transform = `translate(0px, 0px)`; onChange(0, 0);
       });
 
       function handleTouch(e) {
         e.preventDefault();
         const touch = e.touches[0];
-        let dx = touch.clientX - center.x;
-        let dy = touch.clientY - center.y;
-        const dist = Math.hypot(dx, dy);
-        const maxDist = 35;
+        let dx = touch.clientX - center.x; let dy = touch.clientY - center.y;
+        const dist = Math.hypot(dx, dy); const maxDist = 35;
         if (dist > maxDist) { dx = (dx/dist)*maxDist; dy = (dy/dist)*maxDist; }
         knob.style.transform = `translate(${dx}px, ${dy}px)`;
         onChange(dx/maxDist, dy/maxDist);
       }
     }
 
-    // Левый джойстик (движение)
-    setupJoystick('joy-left', 'knob-left', (x, y) => {
-      moveVec = { x, y };
-    });
-
-    // Правый джойстик (прицел)
+    setupJoystick('joy-left', 'knob-left', (x, y) => { moveVec = { x, y }; });
     setupJoystick('joy-right', 'knob-right', (x, y) => {
       aimVec = { x, y };
-      if (x !== 0 || y !== 0) {
-        myPlayer.angle = Math.atan2(y, x);
-      }
+      if (x !== 0 || y !== 0) myPlayer.angle = Math.atan2(y, x);
     });
 
     // ---- ИГРОВОЙ ЦИКЛ ----
     function loop() {
-      // Движение локально (плавное)
-      const speed = 0.2;
+      // 1. Двигаем персонажа
+      const speed = 0.3;
       myPlayer.x += moveVec.x * speed;
       myPlayer.y += moveVec.y * speed;
 
-      // Отправка координат на сервер (не чаще 20 раз в секунду)
+      // 2. Отправляем на сервер
       const now = Date.now();
       if (socket && socket.connected && now - lastMoveSent > 50) {
         socket.emit('move', { x: myPlayer.x, y: myPlayer.y, angle: myPlayer.angle });
         lastMoveSent = now;
       }
 
-      // Отрисовка
+      // 3. Отрисовка
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      
-      // Сетка (для понимания, что мы двигаемся)
-      ctx.strokeStyle = '#333'; ctx.lineWidth = 1;
-      ctx.beginPath();
-      for (let i = 0; i < canvas.width; i += 40) { ctx.moveTo(i, 0); ctx.lineTo(i, canvas.height); }
-      for (let i = 0; i < canvas.height; i += 40) { ctx.moveTo(0, i); ctx.lineTo(canvas.width, i); }
-      ctx.stroke();
-
       const cx = canvas.width / 2;
       const cy = canvas.height / 2;
 
+      // Сетка (двигается вместе с нами!)
+      ctx.strokeStyle = '#333'; ctx.lineWidth = 1;
+      ctx.beginPath();
+      const gridSize = 40;
+      const offsetX = (myPlayer.x * gridSize) % gridSize;
+      const offsetY = (myPlayer.y * gridSize) % gridSize;
+      for (let i = -gridSize; i < canvas.width + gridSize; i += gridSize) {
+        ctx.moveTo(i - offsetX, 0); ctx.lineTo(i - offsetX, canvas.height);
+      }
+      for (let i = -gridSize; i < canvas.height + gridSize; i += gridSize) {
+        ctx.moveTo(0, i - offsetY); ctx.lineTo(canvas.width, i - offsetY);
+      }
+      ctx.stroke();
+
       // Рисуем других игроков
       allPlayers.forEach(p => {
-        if (p.id === (myPlayer.id || 0)) return; // себя не рисуем дважды
-        const px = cx + (p.x - myPlayer.x) * 40;
-        const py = cy + (p.y - myPlayer.y) * 40;
+        if (p.id === myPlayer.id) return;
+        const px = cx + (p.x - myPlayer.x) * gridSize;
+        const py = cy + (p.y - myPlayer.y) * gridSize;
         
-        ctx.fillStyle = '#ff5555';
-        ctx.beginPath();
-        ctx.arc(px, py, 15, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.fillStyle = '#ff5555'; ctx.beginPath(); ctx.arc(px, py, 15, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = 'white'; ctx.font = '12px sans-serif'; ctx.textAlign = 'center';
-        ctx.fillText('Player ' + p.id, px, py - 20);
+        ctx.fillText('P' + p.id, px, py - 20);
       });
 
       // Рисуем себя (всегда в центре)
-      ctx.fillStyle = '#55ff55';
-      ctx.beginPath();
-      ctx.arc(cx, cy, 15, 0, Math.PI * 2);
-      ctx.fill();
-
+      ctx.fillStyle = '#55ff55'; ctx.beginPath(); ctx.arc(cx, cy, 15, 0, Math.PI * 2); ctx.fill();
+      
       // Направление взгляда
       ctx.strokeStyle = 'white'; ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.moveTo(cx, cy);
-      ctx.lineTo(cx + Math.cos(myPlayer.angle) * 25, cy + Math.sin(myPlayer.angle) * 25);
-      ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + Math.cos(myPlayer.angle) * 25, cy + Math.sin(myPlayer.angle) * 25); ctx.stroke();
 
       requestAnimationFrame(loop);
     }
