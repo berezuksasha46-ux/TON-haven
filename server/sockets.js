@@ -50,12 +50,13 @@ export function initSockets(httpServer) {
     socket.emit('welcome', { state, zones: Object.keys(ZONES), items: ITEMS });
 
     /* ---------- MOVEMENT ---------- */
-    socket.on('move', ({ x, y, angle }) => {
-      state.x = clamp(x, 0, 1000);
-      state.y = clamp(y, 0, 1000);
-      state.angle = angle;
-      broadcastZone();
-    });
+socket.on('move', ({ x, y, angle }) => {
+  // Разрешаем двигаться по всей карте (увеличиваем лимиты)
+  state.x = clamp(x, -5000, 5000);
+  state.y = clamp(y, -5000, 5000);
+  state.angle = angle;
+  broadcastZone();
+});
 
     /* ---------- ZONE SWITCH ---------- */
     socket.on('setZone', ({ zone }) => {
