@@ -1,8 +1,6 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-<script src="https://cdn.jsdelivr.net/npm/eruda"></script>
-<script>eruda.init();</script>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>TON Haven</title>
@@ -25,9 +23,6 @@
   <canvas id="game"></canvas>
 
   <script>
-window.onerror = function(msg, url, line) {
-  alert("ОШИБКА: " + msg + " (строка " + line + ")");
-};
     const tg = window.Telegram?.WebApp;
     if (tg) { tg.ready(); tg.expand(); }
 
@@ -37,10 +32,12 @@ window.onerror = function(msg, url, line) {
     window.addEventListener('resize', resize);
     resize();
 
-    let myPlayer = { id: 0, x: 40, y: 40, angle: 0, hp: 100, maxHp: 100 };
+    // myPlayer.id = -1, чтобы не рисовать двойника до авторизации
+    let myPlayer = { id: -1, x: 40, y: 40, angle: 0, hp: 100, maxHp: 100 };
     let allPlayers = [];
     let allMobs = [];
     let socket = null;
+    let attackFlash = 0;
 
     fetch('/api/auth', {
       method: 'POST',
@@ -49,7 +46,7 @@ window.onerror = function(msg, url, line) {
     })
     .then(r => r.json())
     .then(({ token, player }) => {
-      if (!token) return alert('Ошибка БД! Проверьте DATABASE_URL.');
+      if (!token) return alert('Ошибка БД!');
       myPlayer.id = player.id;
       myPlayer.hp = player.hp; myPlayer.maxHp = player.max_hp;
       document.getElementById('hp-val').innerText = myPlayer.hp;
@@ -65,11 +62,6 @@ window.onerror = function(msg, url, line) {
         if (serverMobs) allMobs = serverMobs;
       });
       
-      socket.on('damaged', ({ hp }) => { 
-        myPlayer.hp = hp; 
-        document.getElementById('hp-val').innerText = Math.max(0, Math.round(hp)); 
-      });
-
       socket.on('loot', ({ item, qty }) => {
         alert(`Вы получили: ${item} x${qty}!`);
       });
@@ -101,8 +93,8 @@ window.onerror = function(msg, url, line) {
         if (e.pointerId === pointerId) {
           pointerId = null;
           knob.style.transform = `translate(0px, 0px)`;
-          onChange(0, 0);
           if (onRelease) onRelease();
+          onChange(0, 0);
         }
       });
 
@@ -120,21 +112,20 @@ window.onerror = function(msg, url, line) {
     setupJoystick('joy-left', 'knob-left', (x, y) => { moveVec = { x, y }; });
     
     setupJoystick('joy-right', 'knob-right', 
-  (x, y) => {
-    if (x !== 0 || y !== 0) {
-      myPlayer.angle = Math.atan2(y, x);
-      isChargingAttack = true;
-    }
-    // Убрали else { isChargingAttack = false; } отсюда
-  },
-  () => {
-    // Атакуем, если мы вообще двигали джойстик (даже если сейчас он в центре)
-    if (isChargingAttack && socket && socket.connected) {
-      socket.emit('attack', { angle: myPlayer.angle });
-    }
-    isChargingAttack = false; // Сбрасываем флаг ТОЛЬКО здесь
-  }
-);
+      (x, y) => {
+        if (x !== 0 || y !== 0) {
+          myPlayer.angle = Math.atan2(y, x);
+          isChargingAttack = true;
+        }
+      },
+      () => {
+        if (isChargingAttack && socket && socket.connected) {
+          socket.emit('attack', { angle: myPlayer.angle });
+          attackFlash = 10;
+        }
+        isChargingAttack = false;
+      }
+    );
 
     function loop() {
       const speed = 0.15;
@@ -168,12 +159,13 @@ window.onerror = function(msg, url, line) {
         const py = cy + (mob.y - myPlayer.y) * gridSize;
         
         ctx.fillStyle = '#aa44ff'; ctx.beginPath(); ctx.arc(px, py, 18, 0, Math.PI * 2); ctx.fill();
+        
         // Хп бар моба
-        ctx.fillStyle = 'red'; ctx.fillRect(px - 20, py - 30, 40, 5);
-        ctx.fillStyle = 'lime'; ctx.fillRect(px - 20, py - 30, 40 * (mob.hp / mob.maxHp), 5);
+        ctx.fillStyle = 'red'; ctx.fillRect(px - 20, py - 30, 40, 6);
+        ctx.fillStyle = 'lime'; ctx.fillRect(px - 20, py - 30, 40 * (mob.hp / mob.maxHp), 6);
       });
 
-      // Другие игроки
+      // Другие игроки (с проверкой ID)
       allPlayers.forEach(p => {
         if (p.id === myPlayer.id) return;
         const px = cx + (p.x - myPlayer.x) * gridSize;
@@ -181,14 +173,25 @@ window.onerror = function(msg, url, line) {
         ctx.fillStyle = '#ff5555'; ctx.beginPath(); ctx.arc(px, py, 15, 0, Math.PI * 2); ctx.fill();
       });
 
-      // Конус атаки (когда зажат джойстик)
+      // Конус
       if (isChargingAttack) {
         ctx.fillStyle = 'rgba(255, 50, 50, 0.3)';
         ctx.beginPath();
         ctx.moveTo(cx, cy);
-        ctx.arc(cx, cy, 2.0 * gridSize, myPlayer.angle - 0.6, myPlayer.angle + 0.6);
+        ctx.arc(cx, cy, 3.0 * gridSize, myPlayer.angle - 0.8, myPlayer.angle + 0.8);
         ctx.closePath();
         ctx.fill();
+      }
+
+      // Вспышка удара
+      if (attackFlash > 0) {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.arc(cx, cy, 3.0 * gridSize, myPlayer.angle - 0.8, myPlayer.angle + 0.8);
+        ctx.closePath();
+        ctx.fill();
+        attackFlash--;
       }
 
       // Мой персонаж
