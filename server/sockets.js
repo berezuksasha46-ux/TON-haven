@@ -7,19 +7,18 @@ import { stationRecipes, canCraft } from './game/crafting.js';
 import { listOnMarket, buyFromMarket, p2pTrade, scavengerPrice } from './game/economy.js';
 import { createClan, inviteToClan } from './game/clans.js';
 
-// --- СОЗДАЕМ МОБОВ (Тестовые) ---
+// --- МОБЫ (теперь они умеют двигаться) ---
 export const mobs = [
-  { id: 'mob_1', x: 45, y: 40, hp: 100, maxHp: 100, alive: true, type: 'slime' },
-  { id: 'mob_2', x: 50, y: 50, hp: 100, maxHp: 100, alive: true, type: 'slime' },
-  { id: 'mob_3', x: 35, y: 30, hp: 100, maxHp: 100, alive: true, type: 'slime' },
-  { id: 'mob_4', x: 60, y: 40, hp: 100, maxHp: 100, alive: true, type: 'slime' },
-  { id: 'mob_5', x: 40, y: 60, hp: 100, maxHp: 100, alive: true, type: 'slime' },
+  { id: 'mob_1', x: 45, y: 40, hp: 100, maxHp: 100, alive: true, type: 'slime', speed: 0.02 },
+  { id: 'mob_2', x: 50, y: 50, hp: 100, maxHp: 100, alive: true, type: 'slime', speed: 0.02 },
+  { id: 'mob_3', x: 35, y: 30, hp: 100, maxHp: 100, alive: true, type: 'slime', speed: 0.02 },
+  { id: 'mob_4', x: 60, y: 40, hp: 100, maxHp: 100, alive: true, type: 'slime', speed: 0.02 },
+  { id: 'mob_5', x: 40, y: 60, hp: 100, maxHp: 100, alive: true, type: 'slime', speed: 0.02 },
 ];
 
 export function initSockets(httpServer) {
   const io = new Server(httpServer, { cors: { origin: '*' } });
   const zones = new Map();
-  const islands = new Map();
 
   io.use((socket, next) => {
     const { playerId } = socket.handshake.auth || {};
@@ -39,93 +38,94 @@ export function initSockets(httpServer) {
       isBlocking: false, lastFoodAt: dbp.last_food_at, buffs: {}, isRed: isRed(dbp)
     };
     
-    const spawn = spawnPointForZone('hub', playerId);
-    state.x = spawn.x; state.y = spawn.y;
+    state.x = 40; state.y = 40; // Спавн ровно в центре
     joinZone('hub', state);
     socket.emit('welcome', { state, zones: Object.keys(ZONES), items: ITEMS });
     broadcastZone();
 
-    /* ---------- MOVEMENT ---------- */
+    /* ---------- ДВИЖЕНИЕ ---------- */
     socket.on('move', ({ x, y, angle }) => {
-      state.x = clamp(x, -1000, 1000);
-      state.y = clamp(y, -1000, 1000);
+      state.x = x;
+      state.y = y;
       state.angle = angle;
       broadcastZone();
     });
 
-    /* ---------- ATTACK (По отпусканию джойстика) ---------- */
+    /* ---------- АТАКА ---------- */
     socket.on('attack', ({ angle }) => {
-      const weapon = ITEMS[state.weapon] || ITEMS['sword_wood'];
-      const range = 2.0; // Радиус удара (в клетках)
-      const arc = 0.6;   // Ширина конуса (в радианах)
-
-      let hitSomething = false;
+      const range = 3.0; // Увеличили радиус до 3 клеток
+      const arc = 0.8;   // Сделали конус чуть шире
 
       mobs.forEach(mob => {
         if (!mob.alive) return;
         const dist = Math.hypot(mob.x - state.x, mob.y - state.y);
         
         if (dist <= range) {
-          // Проверка попадания в конус
           const a = Math.atan2(mob.y - state.y, mob.x - state.x);
           let delta = Math.abs(a - angle);
           while (delta > Math.PI) delta = Math.abs(delta - Math.PI * 2);
           
           if (delta <= arc) {
-            mob.hp -= weapon.dmg || 20;
-            hitSomething = true;
+            mob.hp -= 25; // Урон за удар
             if (mob.hp <= 0) {
               mob.alive = false;
               socket.emit('loot', { item: 'wood', qty: 2 });
-              // Респавн моба через 5 секунд
               setTimeout(() => { mob.hp = mob.maxHp; mob.alive = true; broadcastZone(); }, 5000);
             }
           }
         }
       });
-
-      if (hitSomething) broadcastZone();
+      broadcastZone();
     });
 
-    /* ---------- EAT ---------- */
-    socket.on('eat', async ({ itemId }) => {
-      const item = ITEMS[itemId];
-      if (!item || item.kind !== 'food') return;
-      if (!canEat(state.lastFoodAt)) return socket.emit('eatResult', { ok:false, reason:'cooldown' });
-
-      const r = await pool.query(
-        `UPDATE inventory SET qty=qty-1 WHERE id=(SELECT id FROM inventory WHERE player_id=$1 AND item_id=$2 AND qty>0 LIMIT 1) RETURNING id`,
-        [playerId, itemId]
-      );
-      if (!r.rowCount) return socket.emit('eatResult', { ok:false, reason:'no-item' });
-
-      state.hp = Math.min(state.maxHp, state.hp + (item.hp || 0));
-      state.lastFoodAt = new Date();
-      await pool.query(`UPDATE players SET hp=$1,last_food_at=$2 WHERE id=$3`, [state.hp, state.lastFoodAt, playerId]);
-      socket.emit('eatResult', { ok:true, hp: state.hp });
+    socket.on('disconnect', () => { 
+      const map = zones.get(state.zone);
+      if (map) map.delete(state.id);
+      broadcastZone();
     });
 
-    /* ---------- LEAVE ---------- */
-    socket.on('disconnect', () => { leaveZone(); });
-
-    /* ---------- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---------- */
     function joinZone(zone, st) {
       if (!zones.has(zone)) zones.set(zone, new Map());
       zones.get(zone).set(st.id, st);
       socket.join('zone:' + zone);
     }
-    function leaveZone() {
-      const map = zones.get(state.zone);
-      if (map) map.delete(state.id);
-      socket.leave('zone:' + state.zone);
-      broadcastZone();
-    }
+
     function broadcastZone() {
       const map = zones.get(state.zone);
       if (map) {
         io.to('zone:' + state.zone).emit('zoneState', [...map.values()], mobs);
       }
     }
-    function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
   });
+
+  // Движение мобов к игрокам (простой ИИ)
+  setInterval(() => {
+    let changed = false;
+    mobs.forEach(mob => {
+      if (!mob.alive) return;
+      let nearestPlayer = null;
+      let minDist = 999;
+      
+      zones.forEach(map => {
+        map.forEach(p => {
+          const d = Math.hypot(p.x - mob.x, p.y - mob.y);
+          if (d < minDist) { minDist = d; nearestPlayer = p; }
+        });
+      });
+
+      if (nearestPlayer && minDist < 10 && minDist > 1.5) {
+        const dx = nearestPlayer.x - mob.x;
+        const dy = nearestPlayer.y - mob.y;
+        const len = Math.hypot(dx, dy);
+        mob.x += (dx / len) * mob.speed;
+        mob.y += (dy / len) * mob.speed;
+        changed = true;
+      }
+    });
+    if (changed) {
+      zones.forEach((map, zoneName) => {
+        io.to('zone:' + zoneName).emit('zoneState', [...map.values()], mobs);
+      });
+    }
+  }, 100);
 }
