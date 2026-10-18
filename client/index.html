@@ -120,21 +120,21 @@ window.onerror = function(msg, url, line) {
     setupJoystick('joy-left', 'knob-left', (x, y) => { moveVec = { x, y }; });
     
     setupJoystick('joy-right', 'knob-right', 
-      (x, y) => {
-        if (x !== 0 || y !== 0) {
-          myPlayer.angle = Math.atan2(y, x);
-          isChargingAttack = true;
-        } else {
-          isChargingAttack = false;
-        }
-      },
-      () => {
-        if (isChargingAttack && socket && socket.connected) {
-          socket.emit('attack', { angle: myPlayer.angle });
-        }
-        isChargingAttack = false;
-      }
-    );
+  (x, y) => {
+    if (x !== 0 || y !== 0) {
+      myPlayer.angle = Math.atan2(y, x);
+      isChargingAttack = true;
+    }
+    // Убрали else { isChargingAttack = false; } отсюда
+  },
+  () => {
+    // Атакуем, если мы вообще двигали джойстик (даже если сейчас он в центре)
+    if (isChargingAttack && socket && socket.connected) {
+      socket.emit('attack', { angle: myPlayer.angle });
+    }
+    isChargingAttack = false; // Сбрасываем флаг ТОЛЬКО здесь
+  }
+);
 
     function loop() {
       const speed = 0.15;
