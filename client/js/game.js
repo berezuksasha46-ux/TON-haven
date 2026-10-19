@@ -39,7 +39,13 @@ fetch('/api/auth', {
   GS.socket = io({ query: { playerId: playerId } });
   
   // Первичная загрузка
-  GS.socket.on('init', (state) => {
+  GS.socket.on('init', // Внутри GS.socket.on('init', (state) => { ... })
+window.invData = state.inv;
+window.hotbarData = state.hotbar;
+window.equipData = state.equip;
+if (state.equip.shield) document.getElementById('shield-btn').style.display = 'flex';
+if(window.updateUIFromServer) window.updateUIFromServer(state.inv, state.hotbar, state.equip);
+ (state) => {
     GS.me.hp = state.hp; 
     GS.me.maxHp = state.maxHp;
     GS.me.x = state.x; GS.me.y = state.y;
