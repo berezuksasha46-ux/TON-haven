@@ -10,6 +10,8 @@
     body { margin: 0; padding: 0; overflow: hidden; background: #222; font-family: sans-serif; -webkit-user-select: none; user-select: none; }
     canvas { display: block; width: 100vw; height: 100vh; }
     #hud { position: fixed; top: 10px; left: 10px; color: white; font-size: 18px; font-weight: bold; text-shadow: 1px 1px 2px black; z-index: 10; }
+    #inventory { position: fixed; top: 10px; right: 10px; background: rgba(0,0,0,0.6); padding: 8px 12px; border-radius: 8px; color: #fff; font-size: 16px; z-index: 10; display: flex; align-items: center; gap: 5px; border: 1px solid #555; }
+    .wood-icon { width: 16px; height: 16px; background: #8B4513; border-radius: 3px; display: inline-block; }
     .joy { position: fixed; bottom: 30px; width: 120px; height: 120px; border-radius: 50%; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.3); z-index: 10; touch-action: none; }
     #joy-left { left: 30px; }
     #joy-right { right: 30px; background: rgba(255,0,0,0.1); border-color: rgba(255,0,0,0.3); }
@@ -18,11 +20,16 @@
 </head>
 <body>
   <div id="hud">HP: <span id="hp-val">100</span>/100</div>
+  <div id="inventory"><span class="wood-icon"></span> <span id="wood-val">0</span></div>
+  
   <div id="joy-left" class="joy"><div class="knob" id="knob-left"></div></div>
   <div id="joy-right" class="joy"><div class="knob" id="knob-right"></div></div>
   <canvas id="game"></canvas>
 
   <script>
+    // Защита от вылетов при сворачивании Telegram
+    window.onerror = function() { return true; }; 
+
     const tg = window.Telegram?.WebApp;
     if (tg) { tg.ready(); tg.expand(); }
 
@@ -32,10 +39,11 @@
     window.addEventListener('resize', resize);
     resize();
 
-    // myPlayer.id = -1, чтобы не рисовать двойника до авторизации
     let myPlayer = { id: -1, x: 40, y: 40, angle: 0, hp: 100, maxHp: 100 };
     let allPlayers = [];
     let allMobs = [];
+    let allDrops = []; // Предметы на земле
+    let inventory = { wood: 0 }; // Наш инвентарь
     let socket = null;
     let attackFlash = 0;
 
@@ -46,10 +54,8 @@
     })
     .then(r => r.json())
     .then(({ token, player }) => {
-      if (!token) return alert('Ошибка БД!');
+      if (!token) return;
       myPlayer.id = player.id;
-      myPlayer.hp = player.hp; myPlayer.maxHp = player.max_hp;
-      document.getElementById('hp-val').innerText = myPlayer.hp;
       
       socket = io({ auth: { playerId: player.id } });
       
@@ -57,13 +63,19 @@
         myPlayer.x = state.x; myPlayer.y = state.y;
       });
 
-      socket.on('zoneState', (players, serverMobs) => {
+      // Получаем игроков, мобов и ДРОП
+      socket.on('zoneState', (players, serverMobs, serverDrops) => {
         allPlayers = players;
         if (serverMobs) allMobs = serverMobs;
+        if (serverDrops) allDrops = serverDrops;
       });
-      
-      socket.on('loot', ({ item, qty }) => {
-        alert(`Вы получили: ${item} x${qty}!`);
+
+      // Подбор предмета
+      socket.on('pickup', ({ itemId, qty }) => {
+        if (itemId === 'wood') {
+          inventory.wood += qty;
+          document.getElementById('wood-val').innerText = inventory.wood;
+        }
       });
     });
 
@@ -152,6 +164,15 @@
       for (let i = -gridSize; i < canvas.height + gridSize; i += gridSize) { ctx.moveTo(0, i - offsetY); ctx.lineTo(canvas.width, i - offsetY); }
       ctx.stroke();
 
+      // Отрисовка дропа (дерево на земле)
+      allDrops.forEach(drop => {
+        const px = cx + (drop.x - myPlayer.x) * gridSize;
+        const py = cy + (drop.y - myPlayer.y) * gridSize;
+        ctx.fillStyle = '#8B4513'; // Коричневый квадрат
+        ctx.fillRect(px - 8, py - 8, 16, 16);
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.strokeRect(px - 8, py - 8, 16, 16);
+      });
+
       // Мобы
       allMobs.forEach(mob => {
         if (!mob.alive) return;
@@ -160,12 +181,11 @@
         
         ctx.fillStyle = '#aa44ff'; ctx.beginPath(); ctx.arc(px, py, 18, 0, Math.PI * 2); ctx.fill();
         
-        // Хп бар моба
         ctx.fillStyle = 'red'; ctx.fillRect(px - 20, py - 30, 40, 6);
         ctx.fillStyle = 'lime'; ctx.fillRect(px - 20, py - 30, 40 * (mob.hp / mob.maxHp), 6);
       });
 
-      // Другие игроки (с проверкой ID)
+      // Другие игроки
       allPlayers.forEach(p => {
         if (p.id === myPlayer.id) return;
         const px = cx + (p.x - myPlayer.x) * gridSize;
@@ -173,24 +193,20 @@
         ctx.fillStyle = '#ff5555'; ctx.beginPath(); ctx.arc(px, py, 15, 0, Math.PI * 2); ctx.fill();
       });
 
-      // Конус
+      // Конус атаки
       if (isChargingAttack) {
         ctx.fillStyle = 'rgba(255, 50, 50, 0.3)';
-        ctx.beginPath();
-        ctx.moveTo(cx, cy);
+        ctx.beginPath(); ctx.moveTo(cx, cy);
         ctx.arc(cx, cy, 3.0 * gridSize, myPlayer.angle - 0.8, myPlayer.angle + 0.8);
-        ctx.closePath();
-        ctx.fill();
+        ctx.closePath(); ctx.fill();
       }
 
       // Вспышка удара
       if (attackFlash > 0) {
         ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-        ctx.beginPath();
-        ctx.moveTo(cx, cy);
+        ctx.beginPath(); ctx.moveTo(cx, cy);
         ctx.arc(cx, cy, 3.0 * gridSize, myPlayer.angle - 0.8, myPlayer.angle + 0.8);
-        ctx.closePath();
-        ctx.fill();
+        ctx.closePath(); ctx.fill();
         attackFlash--;
       }
 
