@@ -1,7 +1,47 @@
-const ICONS = { apple: '🍎', sword_wood: '⚔️', sword_stone: '🗡️', sword_iron: '⚔️', sword_cobalt: '💠', sword_adamantite: '🟢', sword_holy: '✨', spear_stone: '🔱', spear_iron: '🔱', spear_cobalt: '🔱', bat_wood: '🏏', bat_iron: '🏏', yoyo_wood: '🪀', yoyo_iron: '🪀', bow_wood: '🏹', bow_iron: '🏹', bow_cobalt: '🏹', shuriken_iron: '🌀', shuriken_poison: '🌀', snowball: '❄️', star_pistol: '🔫', star_rifle: '🔫', staff_fire: '🪄', staff_ice: '🪄', book_lightning: '📖', book_heal: '📖', staff_summon: '🌿', pickaxe_wood: '⛏️', pickaxe_stone: '⛏️', pickaxe_iron: '⛏️', pickaxe_cobalt: '💠', pickaxe_diamond: '💠', axe_wood: '🪓', axe_stone: '🪓', axe_iron: '🪓', fishing_rod: '🎣', helmet_leather: '🪖', helmet_iron: '🪖', helmet_cobalt: '💠', helmet_adamantite: '🟢', helmet_holy: '✨', chest_leather: '🥋', chest_iron: '🥋', chest_cobalt: '💠', chest_adamantite: '🟢', chest_holy: '✨', legs_leather: '👖', legs_iron: '👖', boots_leather: '👢', boots_iron: '👢', shield_wood: '🛡️', shield_iron: '🛡️', ring_gold: '💍', wood: '🪵', stone: '🪨', iron_ore: '⛏️', iron_ingot: '⛓️', cobalt_ore: '💠', cobalt_ingot: '🔷', adamantite_ore: '🟢', adamantite_ingot: '🟩', holy_ore: '✨', holy_ingot: '🌟', leather: '🟫', string: '🧵', bone: '🦴', diamond: '💎', magic_crystal: '🔮', bread: '🍞', meat_cooked: '🍖', golden_apple: '🍏', station_workbench: '🔨', station_furnace: '🔥', station_forge: '⚒️', station_anvil: '🛠️' };
+// ================= ИКОНКИ ПРЕДМЕТОВ =================
+const ICONS = {
+  // Ресурсы
+  wood: '🪵', stone: '🪨', iron_ore: '⛏️', iron_ingot: '⛓️', cobalt_ore: '💠', cobalt_ingot: '🔷',
+  adamantite_ore: '🟢', adamantite_ingot: '🟩', holy_ore: '✨', holy_ingot: '🌟', leather: '🟫',
+  string: '🧵', bone: '🦴', diamond: '💎', magic_crystal: '🔮', star_fragment: '🌟',
+  
+  // Еда
+  apple: '🍎', bread: '🍞', meat_cooked: '🍖', fish_cooked: '🐟', golden_apple: '🍏',
+  
+  // Оружие (Ближний)
+  sword_wood: '⚔️', sword_stone: '🗡️', sword_iron: '⚔️', sword_cobalt: '💠', sword_adamantite: '🟢', sword_holy: '✨',
+  spear_stone: '🔱', spear_iron: '🔱', spear_cobalt: '🔱',
+  bat_wood: '🏏', bat_iron: '🏏',
+  yoyo_wood: '🪀', yoyo_iron: '🪀',
+  
+  // Оружие (Дальний)
+  bow_wood: '🏹', bow_iron: '🏹', bow_cobalt: '🏹',
+  shuriken_iron: '🌀', shuriken_poison: '🌀', snowball: '❄️',
+  star_pistol: '🔫', star_rifle: '🔫',
+  
+  // Магия
+  staff_fire: '🪄', staff_ice: '🪄', book_lightning: '📖', book_heal: '📖', staff_summon: '🌿',
+  
+  // Инструменты
+  pickaxe_wood: '⛏️', pickaxe_stone: '⛏️', pickaxe_iron: '⛏️', pickaxe_cobalt: '💠', pickaxe_adamantite: '🟢', pickaxe_holy: '✨',
+  axe_wood: '🪓', axe_stone: '🪓', axe_iron: '🪓', axe_cobalt: '💠',
+  fishing_rod: '🎣',
+  
+  // Броня
+  helmet_leather: '🪖', helmet_iron: '🪖', helmet_cobalt: '💠', helmet_adamantite: '🟢', helmet_holy: '✨',
+  chest_leather: '🥋', chest_iron: '🥋', chest_cobalt: '💠', chest_adamantite: '🟢', chest_holy: '✨',
+  legs_leather: '👖', legs_iron: '👖', legs_cobalt: '💠',
+  boots_leather: '👢', boots_iron: '👢', boots_cobalt: '💠',
+  shield_wood: '🛡️', shield_iron: '🛡️', shield_cobalt: '💠',
+  ring_gold: '💍',
+  
+  // Станки
+  station_workbench: '🔨', station_furnace: '🔥', station_forge: '⚒️', station_anvil: '🛠️', station_spinning: '🧵'
+};
 const getIcon = (id) => ICONS[id] || '📦';
 
-// Данные о предметах для тултипов (дублируем с сервера для скорости)
+// ================= ХАРАКТЕРИСТИКИ ДЛЯ ТУЛТИПОВ =================
+// (Дублируем основные данные с сервера для отображения)
 const ITEM_DATA = {
   sword_wood: { name: 'Деревянный меч', desc: 'Урон: 15 | Скорость: 0.5с | Дальность: 2.2' },
   sword_stone: { name: 'Каменный меч', desc: 'Урон: 28 | Скорость: 0.45с | Дальность: 2.3' },
@@ -14,112 +54,176 @@ const ITEM_DATA = {
   helmet_cobalt: { name: 'Кобальтовый шлем', desc: 'Защита: 15' },
   wood: { name: 'Дерево', desc: 'Базовый ресурс для крафта.' },
   apple: { name: 'Яблоко', desc: 'Восстанавливает 15 HP.' },
-  // ... (можно добавить остальные, но для теста достаточно)
+  station_workbench: { name: 'Верстак', desc: 'Используется для базового крафта.' },
+  // ... (можно добавить остальные)
 };
 
+// ================= ИНИЦИАЛИЗАЦИЯ =================
 document.addEventListener("DOMContentLoaded", () => {
   const invGrid = document.getElementById('inv-grid');
   if (invGrid) for (let i = 0; i < 16; i++) invGrid.innerHTML += `<div class="i-slot" data-type="inv" data-index="${i}"></div>`;
+  
   const hotbarInv = document.getElementById('hotbar-inv');
   if (hotbarInv) for (let i = 0; i < 4; i++) hotbarInv.innerHTML += `<div class="i-slot" data-type="hotbar" data-index="${i}"></div>`;
+  
+  initUI();
   initDragAndDrop();
 });
 
+// ================= ОБНОВЛЕНИЕ UI =================
 window.updateUI = function() {
   const GS = window.GameState;
   if (!GS) return;
+
+  // HP
   const fill = document.getElementById('hp-fill'), text = document.getElementById('hp-text');
-  if (fill && text) { fill.style.width = (GS.me.hp / GS.me.maxHp) * 100 + '%'; text.innerText = `${Math.round(GS.me.hp)} / ${GS.me.maxHp}`; }
+  if (fill && text) { 
+    fill.style.width = (GS.me.hp / GS.me.maxHp) * 100 + '%'; 
+    text.innerText = `${Math.round(GS.me.hp)} / ${GS.me.maxHp}`; 
+  }
   
+  // Инвентарь
   const invSlots = document.querySelectorAll('#inv-grid .i-slot');
   invSlots.forEach(s => { s.innerHTML = ''; s.dataset.itemId = ''; });
   let idx = 0;
   for (const [key, qty] of Object.entries(GS.inv)) {
-    if (qty > 0 && idx < 16) { invSlots[idx].innerHTML = `<span>${getIcon(key)}</span><span class="item-count">${qty}</span>`; invSlots[idx].dataset.itemId = key; idx++; }
+    if (qty > 0 && idx < 16) { 
+      invSlots[idx].innerHTML = `<span>${getIcon(key)}</span><span class="item-count">${qty}</span>`; 
+      invSlots[idx].dataset.itemId = key; 
+      idx++; 
+    }
   }
+
+  // Хотбар в инвентаре
   const hotSlots = document.querySelectorAll('#hotbar-inv .i-slot');
-  hotSlots.forEach((s, i) => { s.innerHTML = GS.hotbar[i] ? getIcon(GS.hotbar[i]) : ''; s.dataset.itemId = GS.hotbar[i] || ''; });
-  document.querySelectorAll('.h-slot').forEach((s, i) => { s.innerHTML = GS.hotbar[i] ? getIcon(GS.hotbar[i]) : ''; });
+  hotSlots.forEach((s, i) => { 
+    s.innerHTML = GS.hotbar[i] ? getIcon(GS.hotbar[i]) : ''; 
+    s.dataset.itemId = GS.hotbar[i] || ''; 
+  });
+
+  // Нижний хотбар
+  document.querySelectorAll('.h-slot').forEach((s, i) => { 
+    s.innerHTML = GS.hotbar[i] ? getIcon(GS.hotbar[i]) : ''; 
+  });
   
+  // Экипировка (без визуальных заглушек)
   ['helmet', 'chest', 'legs', 'boots', 'shield', 'ring'].forEach(slot => {
     const el = document.querySelector(`.eq-slot[data-slot="${slot}"]`);
-    if(el) { if (GS.equip[slot]) { el.style.borderColor = '#00ff00'; el.innerHTML = getIcon(GS.equip[slot]); } else { el.style.borderColor = '#333'; el.innerHTML = '⬜'; } }
+    if(el) { 
+      if (GS.equip[slot]) { 
+        el.style.borderStyle = 'solid'; el.style.borderColor = '#00ff00'; 
+        el.innerHTML = getIcon(GS.equip[slot]); 
+      } else { 
+        el.style.borderStyle = 'dashed'; el.style.borderColor = '#444'; 
+        el.innerHTML = ''; 
+      } 
+    }
   });
 };
 
-// --- ТУЛТИП (При зажатии) ---
+// ================= ТУЛТИПЫ =================
 const tooltipEl = document.getElementById('tooltip');
-let tooltipTimeout = null;
+let tooltipTimer = null;
 
 function showTooltip(e, itemId) {
   const data = ITEM_DATA[itemId];
   if (!data) return;
+  
   tooltipEl.innerHTML = `<h4>${data.name}</h4><p>${data.desc}</p>`;
   tooltipEl.style.display = 'block';
   
-  const rect = e.target.getBoundingClientRect();
-  let x = rect.left + rect.width + 10;
-  let y = rect.top;
+  const x = e.clientX + 15;
+  const y = e.clientY + 15;
   
-  if (x + 200 > window.innerWidth) x = rect.left - 210;
-  if (y + 100 > window.innerHeight) y = window.innerHeight - 110;
-  
-  tooltipEl.style.left = x + 'px';
-  tooltipEl.style.top = y + 'px';
+  tooltipEl.style.left = (x + 200 > window.innerWidth ? e.clientX - 215 : x) + 'px';
+  tooltipEl.style.top = (y + 100 > window.innerHeight ? e.clientY - 110 : y) + 'px';
 }
 
 function hideTooltip() {
   tooltipEl.style.display = 'none';
-  if (tooltipTimeout) clearTimeout(tooltipTimeout);
+  if (tooltipTimer) clearTimeout(tooltipTimer);
 }
 
-// --- DRAG AND DROP ---
+// ================= DRAG AND DROP =================
 let draggedItem = null, dragGhost = null;
+
 function initDragAndDrop() {
   document.querySelectorAll('.i-slot, .eq-slot').forEach(el => {
-    // Тултип при долгом нажатии
     el.addEventListener('pointerdown', (e) => {
-      const itemId = el.dataset.itemId || (el.dataset.type === 'equip' ? window.GameState?.equip[el.dataset.slot] : null);
-      if (itemId) {
-        tooltipTimeout = setTimeout(() => showTooltip(e, itemId), 500);
-      }
-      
-      // Логика Drag and Drop
-      if (!itemId) return;
       const GS = window.GameState;
       if (!GS) return;
+
+      const itemId = el.dataset.itemId || (el.dataset.type === 'equip' ? GS.equip[el.dataset.slot] : null);
+      if (!itemId) return;
       
+      // Тултип при долгом нажатии
+      tooltipTimer = setTimeout(() => showTooltip(e, itemId), 400);
+      
+      // Начинаем drag
       draggedItem = { itemId, from: { type: el.dataset.type, index: el.dataset.index, slot: el.dataset.slot } };
-      dragGhost = document.createElement('div'); dragGhost.className = 'drag-ghost'; dragGhost.innerText = getIcon(itemId);
-      document.body.appendChild(dragGhost); dragGhost.style.left = e.clientX + 'px'; dragGhost.style.top = e.clientY + 'px';
       
-      const moveHandler = (ev) => { 
-        hideTooltip(); // Скрываем тултип при движении
-        if (!dragGhost) return; 
-        dragGhost.style.left = ev.clientX + 'px'; dragGhost.style.top = ev.clientY + 'px'; 
+      const moveHandler = (ev) => {
+        if (!dragGhost && Math.hypot(ev.clientX - e.clientX, ev.clientY - e.clientY) > 10) {
+          hideTooltip();
+          dragGhost = document.createElement('div'); 
+          dragGhost.className = 'drag-ghost'; 
+          dragGhost.innerText = getIcon(itemId);
+          document.body.appendChild(dragGhost);
+        }
+        if (dragGhost) {
+          dragGhost.style.left = ev.clientX + 'px'; 
+          dragGhost.style.top = ev.clientY + 'px';
+        }
       };
+      
       const upHandler = (ev) => {
         hideTooltip();
-        document.removeEventListener('pointermove', moveHandler); document.removeEventListener('pointerup', upHandler);
-        if (!dragGhost || !draggedItem) return;
-        dragGhost.remove(); dragGhost = null;
-        const dropTarget = document.elementFromPoint(ev.clientX, ev.clientY)?.closest('.i-slot, .eq-slot');
-        if (dropTarget && GS.socket) {
-          const to = { type: dropTarget.dataset.type, index: dropTarget.dataset.index, slot: dropTarget.dataset.slot };
-          GS.socket.emit('moveItem', { from: draggedItem.from, to, itemId: draggedItem.itemId });
+        document.removeEventListener('pointermove', moveHandler); 
+        document.removeEventListener('pointerup', upHandler);
+        
+        if (dragGhost && draggedItem && GS.socket) {
+          const dropTarget = document.elementFromPoint(ev.clientX, ev.clientY)?.closest('.i-slot, .eq-slot');
+          if (dropTarget) {
+            const to = { type: dropTarget.dataset.type, index: dropTarget.dataset.index, slot: dropTarget.dataset.slot };
+            GS.socket.emit('moveItem', { from: draggedItem.from, to, itemId: draggedItem.itemId });
+          }
         }
+        
+        if (dragGhost) dragGhost.remove();
+        dragGhost = null; 
         draggedItem = null;
       };
-      document.addEventListener('pointermove', moveHandler); document.addEventListener('pointerup', upHandler);
+      
+      document.addEventListener('pointermove', moveHandler); 
+      document.addEventListener('pointerup', upHandler);
     });
-    
-    // Скрываем тултип при отпускании без свайпа
-    el.addEventListener('pointerup', hideTooltip);
-    el.addEventListener('pointerleave', hideTooltip);
   });
 }
 
-// --- КРАФТ (С выбором станка) ---
+// ================= ОКНА И КНОПКИ =================
+function initUI() {
+  document.getElementById('inventory-btn')?.addEventListener('click', () => document.getElementById('inv-overlay')?.classList.add('open'));
+  document.getElementById('close-inv')?.addEventListener('click', () => document.getElementById('inv-overlay')?.classList.remove('open'));
+  
+  document.getElementById('craft-btn')?.addEventListener('click', () => {
+    document.getElementById('craft-overlay')?.classList.add('open');
+    if(window.renderCrafting) window.renderCrafting();
+  });
+  document.getElementById('close-craft')?.addEventListener('click', () => document.getElementById('craft-overlay')?.classList.remove('open'));
+  
+  document.getElementById('place-btn')?.addEventListener('click', () => {
+    const GS = window.GameState;
+    if (!GS || !GS.socket) return;
+    const station = GS.hotbar[GS.me.activeSlot];
+    if (station && station.startsWith('station_')) {
+      GS.socket.emit('placeStation', { itemId: station });
+    } else {
+      alert('Выберите станок в хотбаре (Верстак, Печь и т.д.)');
+    }
+  });
+}
+
+// ================= КРАФТ =================
 const RECIPES_CLIENT = {
   sword_wood: { name: 'Деревянный меч', cost: { wood: 5 }, station: 'workbench' },
   pickaxe_wood: { name: 'Деревянная кирка', cost: { wood: 5 }, station: 'workbench' },
@@ -131,10 +235,11 @@ const RECIPES_CLIENT = {
   sword_cobalt: { name: 'Кобальтовый меч', cost: { cobalt_ingot: 5 }, station: 'anvil' },
 };
 
-function renderCrafting() {
+window.renderCrafting = function() {
   const list = document.getElementById('craft-list');
   const GS = window.GameState;
   if (!list || !GS) return;
+  
   list.innerHTML = '';
   
   for (const [id, recipe] of Object.entries(RECIPES_CLIENT)) {
@@ -143,37 +248,19 @@ function renderCrafting() {
     
     list.innerHTML += `
       <div class="craft-item">
-        <div><span>${getIcon(id)} ${recipe.name}</span><br><small>${costStr} (Станок: ${recipe.station})</small></div>
+        <div>
+          <span>${getIcon(id)} ${recipe.name}</span><br>
+          <small>Ресурсы: ${costStr}</small><br>
+          <small>Станок: ${recipe.station}</small>
+        </div>
         <button onclick="window.craftItem('${id}', '${recipe.station}')" ${canCraft ? '' : 'disabled'}>Создать</button>
       </div>
     `;
   }
-}
+};
 
 window.craftItem = (id, station) => {
   if (window.GameState && window.GameState.socket) {
     window.GameState.socket.emit('craft', { recipeId: id, stationId: station });
   }
 };
-
-// UI Окна
-document.addEventListener("DOMContentLoaded", () => {
-  document.getElementById('inventory-btn')?.addEventListener('click', () => document.getElementById('inv-overlay')?.classList.add('open'));
-  document.getElementById('close-inv')?.addEventListener('click', () => document.getElementById('inv-overlay')?.classList.remove('open'));
-  document.getElementById('craft-btn')?.addEventListener('click', () => {
-    document.getElementById('craft-overlay')?.classList.add('open');
-    renderCrafting();
-  });
-  document.getElementById('close-craft')?.addEventListener('click', () => document.getElementById('craft-overlay')?.classList.remove('open'));
-  
-  document.getElementById('place-btn')?.addEventListener('click', () => {
-    const GS = window.GameState;
-    if (!GS || !GS.socket) return;
-    const station = GS.hotbar[GS.me.activeSlot];
-    if (station && station.startsWith('station_')) {
-      GS.socket.emit('placeStation', { itemId: station });
-    } else {
-      alert('Выберите станок в хотбаре (Верстак, Печь, Кузница)');
-    }
-  });
-});
