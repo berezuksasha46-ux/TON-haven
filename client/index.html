@@ -14,7 +14,6 @@
   <div id="joy-right" class="joy"><div class="knob" id="knob-right"></div></div>
   <div id="shield-btn">БЛОК</div>
 
-  <!-- Нижний Хотбар -->
   <div id="hotbar">
     <div class="h-slot active" data-index="0">🍎</div>
     <div class="h-slot" data-index="1">⚔️</div>
@@ -27,24 +26,23 @@
   <!-- Окно инвентаря -->
   <div id="inv-overlay">
     <div id="inv-window">
-      <h3 class="inv-title">Инвентарь</h3>
+      <button class="close-btn" id="close-inv">X</button>
+      <div class="char-preview">
+        <div class="char-sprite">
+          <div class="char-head"></div>
+          <div class="char-helmet" id="vis-helmet"></div>
+          <div class="char-shield" id="vis-shield"></div>
+        </div>
+      </div>
       
-      <!-- Слоты экипировки -->
       <div class="equip-container">
-        <div class="eq-slot" id="eq-helmet">🪖</div>
-        <div class="eq-slot" id="eq-chest">🛡️</div>
-        <div class="eq-slot" id="eq-shield">🛡️</div>
+        <div class="eq-slot" id="eq-helmet" data-slot="helmet">🪖<span>Шлем</span></div>
+        <div class="eq-slot" id="eq-chest" data-slot="chest">🛡️<span>Броня</span></div>
+        <div class="eq-slot" id="eq-shield" data-slot="shield">🛡️<span>Щит</span></div>
       </div>
 
-      <!-- Сетка 4х4 -->
-      <div class="grid-container" id="inv-grid">
-        <!-- Заполнится через JS -->
-      </div>
-
-      <!-- Дубликат Хотбара внутри инвентаря -->
-      <div class="hotbar-in-inv" id="hotbar-inv">
-        <!-- Заполнится через JS -->
-      </div>
+      <div class="grid-container" id="inv-grid"></div>
+      <div class="hotbar-in-inv" id="hotbar-inv"></div>
     </div>
   </div>
 
@@ -61,76 +59,97 @@
     window.addEventListener('resize', resize); resize();
 
     let myPlayer = { id: -1, x: 40, y: 40, angle: 0, hp: 100, maxHp: 100, activeSlot: 0 };
-    let allPlayers = [], allResources = [], allMobs = [], allDrops = [], allProjectiles = [];
-    let inventory = { wood: 5, apple: 3, shield_wood: 1 }; 
+    let allPlayers = [], allResources = [], allMobs = [], allDrops = [];
+    let invData = { wood: 5, apple: 3, shield_wood: 1 }; 
+    let hotbarData = ['apple', 'sword', 'pickaxe', null];
+    let equipData = { helmet: null, chest: null, shield: 'shield_wood' };
     let socket = null;
     let isBlocking = false;
 
-    // Отрисовка сеток
+    // Заполняем сетки
     const invGrid = document.getElementById('inv-grid');
-    for (let i = 0; i < 16; i++) invGrid.innerHTML += `<div class="i-slot"></div>`;
+    for (let i = 0; i < 16; i++) invGrid.innerHTML += `<div class="i-slot" data-type="inv" data-index="${i}"></div>`;
     const hotbarInv = document.getElementById('hotbar-inv');
-    for (let i = 0; i < 4; i++) hotbarInv.innerHTML += `<div class="i-slot"></div>`;
+    for (let i = 0; i < 4; i++) hotbarInv.innerHTML += `<div class="i-slot" data-type="hotbar" data-index="${i}"></div>`;
 
-    // Логика перетаскивания (Drag and Drop)
-    let draggedItem = null;
-
-    function makeDraggable(element, itemId) {
-      element.draggable = true;
-      element.ondragstart = (e) => { draggedItem = itemId; e.dataTransfer.effectAllowed = 'move'; };
-      element.ondragover = (e) => e.preventDefault();
-      element.ondrop = (e) => {
-        e.preventDefault();
-        if (draggedItem) {
-          // Если перетащили в слот экипировки
-          if (element.id.startsWith('eq-')) {
-            const type = element.id.replace('eq-', '');
-            socket.emit('equipItem', { slot: type, itemId: draggedItem });
-            inventory[draggedItem] -= 1; // Убираем из инвентаря
-          }
+    // Обновление UI
+    function renderInv() {
+      // Сетка
+      const invSlots = invGrid.querySelectorAll('.i-slot');
+      invSlots.forEach(s => s.innerHTML = '');
+      let idx = 0;
+      for (const [key, qty] of Object.entries(invData)) {
+        if (qty > 0 && idx < 16) {
+          const icon = key === 'wood' ? '🪵' : key === 'apple' ? '🍎' : '🛡️';
+          invSlots[idx].innerHTML = `<span>${icon}</span><span class="item-count">${qty}</span>`;
+          invSlots[idx].dataset.itemId = key;
+          idx++;
         }
-        draggedItem = null;
-      };
+      }
+      
+      // Хотбар внутри инвентаря
+      const hotSlots = hotbarInv.querySelectorAll('.i-slot');
+      hotSlots.forEach((s, i) => {
+        s.innerHTML = hotbarData[i] ? (hotbarData[i] === 'apple' ? '🍎' : hotbarData[i] === 'sword' ? '⚔️' : '⛏️') : '';
+        s.dataset.itemId = hotbarData[i] || '';
+      });
     }
 
-    // Открытие инвентаря
-    document.getElementById('inventory-btn').addEventListener('click', () => {
-      document.getElementById('inv-overlay').classList.toggle('open');
-      renderInventory();
+    // Логика перетаскивания (Touch Events)
+    let dragItem = null;
+    let dragIcon = null;
+    let dragOffsetX = 0, dragOffsetY = 0;
+
+    document.querySelectorAll('.i-slot, .eq-slot').forEach(el => {
+      el.addEventListener('touchstart', (e) => {
+        const itemId = el.dataset.itemId || (el.id === 'eq-shield' ? equipData.shield : null);
+        if (!itemId) return;
+        
+        dragItem = { itemId, from: { type: el.dataset.type || 'equip', index: el.dataset.index, slot: el.dataset.slot } };
+        dragIcon = document.createElement('div');
+        dragIcon.innerText = itemId === 'wood' ? '🪵' : itemId === 'apple' ? '🍎' : '🛡️';
+        dragIcon.style.cssText = 'position:fixed;font-size:30px;pointer-events:none;z-index:9999;';
+        document.body.appendChild(dragIcon);
+        
+        const touch = e.touches[0];
+        dragIcon.style.left = touch.clientX - 15 + 'px';
+        dragIcon.style.top = touch.clientY - 15 + 'px';
+        e.preventDefault();
+      }, { passive: false });
+
+      el.addEventListener('touchmove', (e) => {
+        if (!dragIcon) return;
+        const touch = e.touches[0];
+        dragIcon.style.left = touch.clientX - 15 + 'px';
+        dragIcon.style.top = touch.clientY - 15 + 'px';
+        e.preventDefault();
+      }, { passive: false });
+
+      el.addEventListener('touchend', (e) => {
+        if (!dragIcon) return;
+        dragIcon.remove();
+        
+        const touch = e.changedTouches[0];
+        const dropTarget = document.elementFromPoint(touch.clientX, touch.clientY).closest('.i-slot, .eq-slot');
+        
+        if (dropTarget) {
+          const to = { type: dropTarget.dataset.type || 'equip', index: dropTarget.dataset.index, slot: dropTarget.dataset.slot };
+          socket.emit('moveItem', { from: dragItem.from, to, itemId: dragItem.itemId });
+        }
+        
+        dragIcon = null;
+        dragItem = null;
+      });
     });
 
-    // Отрисовка предметов
-    function renderInventory() {
-      const slots = document.querySelectorAll('.i-slot');
-      slots.forEach(s => s.innerHTML = '');
-      
-      // Выводим дерево
-      if (inventory.wood > 0) {
-        slots[0].innerHTML = `<span>🪵</span><span class="item-count">${inventory.wood}</span>`;
-        makeDraggable(slots[0], 'wood');
-      }
-      // Выводим еду
-      if (inventory.apple > 0) {
-        slots[1].innerHTML = `<span>🍎</span><span class="item-count">${inventory.apple}</span>`;
-        makeDraggable(slots[1], 'apple');
-      }
-      // Выводим щит
-      if (inventory.shield_wood > 0) {
-        slots[2].innerHTML = `<span>🛡️</span><span class="item-count">${inventory.shield_wood}</span>`;
-        makeDraggable(slots[2], 'shield_wood');
-      }
-    }
-
-    // Экипировка щита (через drag and drop)
-    document.getElementById('eq-shield').ondragover = (e) => e.preventDefault();
-    document.getElementById('eq-shield').ondrop = (e) => {
-      e.preventDefault();
-      if (draggedItem === 'shield_wood') {
-        socket.emit('equipItem', { slot: 'shield', itemId: 'shield_wood' });
-        document.getElementById('shield-btn').style.display = 'flex';
-        document.getElementById('eq-shield').style.borderColor = '#00ff00';
-      }
-    };
+    // Открытие/закрытие инвентаря
+    document.getElementById('inventory-btn').addEventListener('click', () => {
+      document.getElementById('inv-overlay').classList.add('open');
+      renderInv();
+    });
+    document.getElementById('close-inv').addEventListener('click', () => {
+      document.getElementById('inv-overlay').classList.remove('open');
+    });
 
     // Смена слота хотбара
     document.querySelectorAll('.h-slot').forEach((slot, i) => {
@@ -138,7 +157,7 @@
         document.querySelectorAll('.h-slot').forEach(s => s.classList.remove('active'));
         slot.classList.add('active');
         myPlayer.activeSlot = i;
-        if (socket) socket.emit('selectSlot', { slot: i });
+        if (socket) socket.emit('selectSlot', { index: i });
       });
     });
 
@@ -153,12 +172,19 @@
       myPlayer.id = Number(player.id);
       socket = io({ auth: { playerId: myPlayer.id } });
       
-      socket.on('welcome', ({ state }) => { myPlayer.x = state.x; myPlayer.y = state.y; updateUI(); });
+      socket.on('welcome', ({ state }) => {
+        myPlayer.x = state.x; myPlayer.y = state.y;
+        invData = state.inv; hotbarData = state.hotbar; equipData = state.equipment;
+        if (equipData.shield) document.getElementById('shield-btn').style.display = 'flex';
+        updateUI();
+      });
+      
       socket.on('zoneState', (players, res, mobs, drops, projs) => {
         allPlayers = players.filter(p => Number(p.id) !== myPlayer.id);
-        allResources = res; allMobs = mobs; allDrops = drops; allProjectiles = projs;
+        allResources = res; allMobs = mobs; allDrops = drops;
       });
-      socket.on('updateInv', (inv) => { inventory = inv; updateUI(); if (document.getElementById('inv-overlay').classList.contains('open')) renderInventory(); });
+      
+      socket.on('updateInv', (inv) => { invData = inv; updateUI(); if (document.getElementById('inv-overlay').classList.contains('open')) renderInv(); });
       socket.on('updateHp', (hp) => { myPlayer.hp = hp; updateUI(); });
     });
 
@@ -183,9 +209,8 @@
       attackCharge = 0;
     });
 
-    const shieldBtn = document.getElementById('shield-btn');
-    shieldBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); isBlocking = true; socket.emit('shield', { active: true }); });
-    shieldBtn.addEventListener('pointerup', (e) => { e.preventDefault(); isBlocking = false; socket.emit('shield', { active: false }); });
+    document.getElementById('shield-btn').addEventListener('pointerdown', (e) => { e.preventDefault(); isBlocking = true; socket.emit('shield', { active: true }); });
+    document.getElementById('shield-btn').addEventListener('pointerup', (e) => { e.preventDefault(); isBlocking = false; socket.emit('shield', { active: false }); });
 
     // ИГРОВОЙ ЦИКЛ
     function loop() {
@@ -195,14 +220,12 @@
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       const cx = canvas.width / 2; const cy = canvas.height / 2; const gridSize = 40;
 
-      // Сетка
       ctx.strokeStyle = '#2a2a2a'; ctx.lineWidth = 1; ctx.beginPath();
       const offsetX = (myPlayer.x * gridSize) % gridSize; const offsetY = (myPlayer.y * gridSize) % gridSize;
       for (let i = -gridSize; i < canvas.width + gridSize; i += gridSize) { ctx.moveTo(i - offsetX, 0); ctx.lineTo(i - offsetX, canvas.height); }
       for (let i = -gridSize; i < canvas.height + gridSize; i += gridSize) { ctx.moveTo(0, i - offsetY); ctx.lineTo(canvas.width, i - offsetY); }
       ctx.stroke();
 
-      // Мир
       allResources.forEach(res => {
         const px = cx + (res.x - myPlayer.x) * gridSize; const py = cy + (res.y - myPlayer.y) * gridSize;
         if (res.type === 'tree') { ctx.fillStyle = '#5c3a21'; ctx.fillRect(px - 6, py - 10, 12, 20); ctx.fillStyle = '#2d6a2e'; ctx.fillRect(px - 15, py - 25, 30, 20); }
@@ -211,13 +234,11 @@
       allMobs.forEach(mob => { if (!mob.alive) return; const px = cx + (mob.x - myPlayer.x) * gridSize; const py = cy + (mob.y - myPlayer.y) * gridSize; ctx.fillStyle = '#aa44ff'; ctx.beginPath(); ctx.arc(px, py, 18, 0, Math.PI * 2); ctx.fill(); });
       allDrops.forEach(drop => { const px = cx + (drop.x - myPlayer.x) * gridSize; const py = cy + (drop.y - myPlayer.y) * gridSize; ctx.fillStyle = '#8B4513'; ctx.fillRect(px - 8, py - 8, 16, 16); });
       
-      // Персонаж
       ctx.fillStyle = '#3498db'; ctx.fillRect(cx - 10, cy - 10, 20, 20);
       ctx.fillStyle = '#f1c40f'; ctx.fillRect(cx - 6, cy - 20, 12, 12);
       ctx.strokeStyle = 'white'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(myPlayer.angle) * 30, cy + Math.sin(myPlayer.angle) * 30); ctx.stroke();
 
-      // Щит (Синяя дуга)
-      if (isBlocking && document.getElementById('shield-btn').style.display === 'flex') {
+      if (isBlocking && equipData.shield) {
         ctx.strokeStyle = '#0096ff'; ctx.lineWidth = 6;
         ctx.beginPath(); ctx.arc(cx, cy, 28, myPlayer.angle - 1.74, myPlayer.angle + 1.74); ctx.stroke();
       }
