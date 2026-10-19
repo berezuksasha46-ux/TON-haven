@@ -1,21 +1,20 @@
-// game.js
-window.onerror = function(m, u, l) { console.error("ERR:", m, "at", l); return true; };
-
+// game.js - Движок и Сеть
+window.onerror = function(m) { console.error(m); return true; };
 const tg = window.Telegram?.WebApp;
 if (tg) { tg.ready(); tg.expand(); }
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
-function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+const resize = () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; };
 window.addEventListener('resize', resize); resize();
 
 window.GameState = {
   me: { id: -1, x: 40, y: 40, angle: 0, hp: 100, maxHp: 100, activeSlot: 0 },
   players: [], mobs: [], resources: [], drops: [],
   targetMe: { x: 40, y: 40, angle: 0 },
-  isBlocking: false, attackFlash: 0, socket: null
+  isBlocking: false, attackFlash: 0, socket: null,
+  inv: {}, hotbar: [], equip: {}
 };
-
 const GS = window.GameState;
 const gridSize = 40;
 
@@ -26,58 +25,33 @@ fetch('/api/auth', {
 .then(r => r.json())
 .then(({ playerId }) => {
   if (!playerId) return alert('Ошибка авторизации');
-  
   GS.me.id = playerId;
-  GS.socket = io({ query: { playerId: playerId } });
+  GS.socket = io({ query: { playerId } });
   
   GS.socket.on('init', (state) => {
     GS.me.hp = state.hp; GS.me.maxHp = state.maxHp;
     GS.me.x = state.x; GS.me.y = state.y;
     GS.targetMe.x = state.x; GS.targetMe.y = state.y;
+    GS.inv = state.inv; GS.hotbar = state.hotbar; GS.equip = state.equip;
     
-    window.invData = state.inv || {};
-    window.hotbarData = state.hotbar || [];
-    window.equipData = state.equip || {};
-    
-    if (state.equip && state.equip.shield) {
-      const s = document.getElementById('shield-btn'); if(s) s.style.display = 'flex';
-    }
-    if(window.updateUIFromServer) window.updateUIFromServer(window.invData, window.hotbarData, window.equipData);
-    updateHUD();
+    if (GS.equip.shield) document.getElementById('shield-btn').style.display = 'flex';
+    if(window.updateUI) window.updateUI();
   });
 
-  GS.socket.on('worldUpdate', (world) => {
-    GS.players = world.players.filter(p => p.id !== GS.me.id);
-    GS.mobs = world.mobs; GS.resources = world.resources; GS.drops = world.drops;
+  GS.socket.on('worldUpdate', (w) => {
+    GS.players = w.players.filter(p => p.id !== GS.me.id);
+    GS.mobs = w.mobs; GS.resources = w.resources; GS.drops = w.drops;
   });
 
-  GS.socket.on('hp', (hp) => { GS.me.hp = hp; updateHUD(); });
-  GS.socket.on('error', (msg) => alert(msg));
-
-  GS.socket.on('updateInv', (inv) => { 
-    window.invData = inv; 
-    if(window.updateUIFromServer) window.updateUIFromServer(inv, window.hotbarData, window.equipData); 
-  });
-  GS.socket.on('updateHotbar', (hb) => { 
-    window.hotbarData = hb; 
-    if(window.updateUIFromServer) window.updateUIFromServer(window.invData, hb, window.equipData); 
-  });
-  GS.socket.on('updateEquip', (eq) => { 
-    window.equipData = eq; 
-    const s = document.getElementById('shield-btn'); if(s) s.style.display = eq.shield ? 'flex' : 'none';
-    if(window.updateUIFromServer) window.updateUIFromServer(window.invData, window.hotbarData, eq); 
-  });
+  GS.socket.on('hp', (hp) => { GS.me.hp = hp; if(window.updateUI) window.updateUI(); });
+  GS.socket.on('error', alert);
+  
+  GS.socket.on('updateEquip', (eq) => { GS.equip = eq; document.getElementById('shield-btn').style.display = eq.shield ? 'flex' : 'none'; if(window.updateUI) window.updateUI(); });
+  GS.socket.on('updateHotbar', (hb) => { GS.hotbar = hb; if(window.updateUI) window.updateUI(); });
+  GS.socket.on('updateInv', (inv) => { GS.inv = inv; if(window.updateUI) window.updateUI(); });
 });
 
-function updateHUD() {
-  const fill = document.getElementById('hp-fill');
-  const text = document.getElementById('hp-text');
-  if (fill && text) {
-    fill.style.width = (GS.me.hp / GS.me.maxHp) * 100 + '%';
-    text.innerText = `${Math.round(GS.me.hp)} / ${GS.me.maxHp}`;
-  }
-}
-
+// Управление
 let moveVec = { x: 0, y: 0 };
 let aimActive = false;
 
@@ -85,17 +59,20 @@ function setupJoystick(joyId, knobId, onChange, onRelease) {
   const joy = document.getElementById(joyId); const knob = document.getElementById(knobId);
   if (!joy || !knob) return;
   let pointerId = null; let center = { x: 0, y: 0 };
+  
   joy.addEventListener('pointerdown', (e) => {
     pointerId = e.pointerId; joy.setPointerCapture(e.pointerId);
     const rect = joy.getBoundingClientRect(); center = { x: rect.left + rect.width/2, y: rect.top + rect.height/2 };
     handleMove(e);
   });
   joy.addEventListener('pointermove', (e) => { if (e.pointerId === pointerId) handleMove(e); });
+  
   const endTouch = (e) => {
     if (e.pointerId === pointerId) { pointerId = null; knob.style.transform = `translate(0px, 0px)`; onChange(0, 0); if (onRelease) onRelease(); }
   };
   joy.addEventListener('pointerup', endTouch);
   joy.addEventListener('pointercancel', endTouch);
+  
   function handleMove(e) {
     let dx = e.clientX - center.x; let dy = e.clientY - center.y;
     const dist = Math.hypot(dx, dy); const maxDist = 40;
@@ -111,26 +88,24 @@ setupJoystick('joy-right', 'knob-right',
   () => { if (aimActive && GS.socket) { GS.socket.emit('attack'); GS.attackFlash = 8; } aimActive = false; }
 );
 
-const shieldBtn = document.getElementById('shield-btn');
-if (shieldBtn) {
-  shieldBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); GS.isBlocking = true; shieldBtn.style.background = 'rgba(0,150,255,0.9)'; });
-  shieldBtn.addEventListener('pointerup', (e) => { e.preventDefault(); GS.isBlocking = false; shieldBtn.style.background = 'rgba(0,150,255,0.6)'; });
-}
+document.getElementById('shield-btn')?.addEventListener('pointerdown', (e) => { e.preventDefault(); GS.isBlocking = true; e.target.style.background = 'rgba(0,150,255,0.9)'; });
+document.getElementById('shield-btn')?.addEventListener('pointerup', (e) => { e.preventDefault(); GS.isBlocking = false; e.target.style.background = 'rgba(0,150,255,0.6)'; });
 
 document.querySelectorAll('.h-slot').forEach((slot, i) => {
   slot.addEventListener('click', () => {
     document.querySelectorAll('.h-slot').forEach(s => s.classList.remove('active'));
     slot.classList.add('active');
     GS.me.activeSlot = i;
+    if(GS.socket) GS.socket.emit('selectSlot', i);
   });
 });
 
+// Игровой цикл
 function loop() {
   GS.targetMe.x += moveVec.x * 0.12; GS.targetMe.y += moveVec.y * 0.12;
   GS.me.x += (GS.targetMe.x - GS.me.x) * 0.3; GS.me.y += (GS.targetMe.y - GS.me.y) * 0.3;
   GS.me.angle = GS.targetMe.angle;
-
-  if (GS.socket && GS.socket.connected) GS.socket.emit('move', { x: GS.me.x, y: GS.me.y, angle: GS.me.angle });
+  if (GS.socket) GS.socket.emit('move', { x: GS.me.x, y: GS.me.y, angle: GS.me.angle });
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   const cx = canvas.width / 2; const cy = canvas.height / 2;
@@ -145,7 +120,6 @@ function loop() {
   // Ресурсы
   GS.resources.forEach(res => {
     const px = cx + (res.x - GS.me.x) * gridSize; const py = cy + (res.y - GS.me.y) * gridSize;
-    if (px < -50 || px > canvas.width + 50 || py < -50 || py > canvas.height + 50) return; 
     if (res.type === 'tree') { ctx.fillStyle = '#5c3a21'; ctx.fillRect(px - 6, py - 10, 12, 20); ctx.fillStyle = '#2d6a2e'; ctx.fillRect(px - 15, py - 25, 30, 20); }
     else { ctx.fillStyle = '#7f8c8d'; ctx.fillRect(px - 15, py - 10, 30, 20); }
     if (res.hp < res.maxHp) { ctx.fillStyle = 'red'; ctx.fillRect(px - 15, py - 40, 30, 4); ctx.fillStyle = 'yellow'; ctx.fillRect(px - 15, py - 40, 30 * (res.hp / res.maxHp), 4); }
@@ -156,7 +130,6 @@ function loop() {
   GS.mobs.forEach(mob => {
     if (!mob.alive) return;
     const px = cx + (mob.x - GS.me.x) * gridSize; const py = cy + (mob.y - GS.me.y) * gridSize;
-    if (px < -50 || px > canvas.width + 50 || py < -50 || py > canvas.height + 50) return;
     const bounce = Math.sin(time + mob.x) * 3;
     ctx.fillStyle = '#9b59b6'; ctx.beginPath(); ctx.ellipse(px, py + bounce, 18, 14, 0, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(px - 6, py - 4 + bounce, 4, 0, Math.PI * 2); ctx.arc(px + 6, py - 4 + bounce, 4, 0, Math.PI * 2); ctx.fill();
@@ -167,7 +140,6 @@ function loop() {
   // Дроп
   GS.drops.forEach(drop => {
     const px = cx + (drop.x - GS.me.x) * gridSize; const py = cy + (drop.y - GS.me.y) * gridSize;
-    if (px < -50 || px > canvas.width + 50 || py < -50 || py > canvas.height + 50) return;
     ctx.fillStyle = drop.item === 'wood' ? '#8B4513' : '#7f8c8d'; ctx.fillRect(px - 8, py - 8, 16, 16);
     ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.strokeRect(px - 8, py - 8, 16, 16);
   });
