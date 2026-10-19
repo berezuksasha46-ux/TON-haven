@@ -2,43 +2,56 @@ import 'dotenv/config';
 import express from 'express';
 import http from 'http';
 import cors from 'cors';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { pool } from './db.js';
-import { verifyTelegramInitData, signToken, authMiddleware } from './auth.js';
 import { initSockets } from './sockets.js';
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 app.use(cors());
 app.use(express.json());
-app.use(express.static('client'));
 
+// Раздаем статику из папки client
+app.use(express.static(path.join(__dirname, '../client')));
+
+// Авторизация
 app.post('/api/auth', async (req, res) => {
-  const { initData, devTgId } = req.body;
-  const tgUser = verifyTelegramInitData(initData, process.env.TELEGRAM_BOT_TOKEN);
-  const tgId = tgUser?.id || Number(devTgId);
-  if (!tgId) return res.status(400).json({ error: 'no user' });
+  const { devTgId } = req.body;
+  const tgId = devTgId || Math.floor(Math.random() * 1000000); // Fallback для тестов
 
   try {
-    const r = await pool.query(
-      `INSERT INTO players(tg_id, username) VALUES($1,$2)
-       ON CONFLICT(tg_id) DO UPDATE SET username=EXCLUDED.username RETURNING *`,
-      [tgId, tgUser?.username || 'player'+tgId]
-    );
-    res.json({ token: signToken({ id: r.rows[0].id }), player: r.rows[0] });
-  } catch (e) {
-    console.error('DB Error:', e.message);
-    res.status(500).json({ error: 'db error' });
+    // Ищем игрока или создаем нового
+    let result = await pool.query('SELECT * FROM players WHERE tg_id = $1', [tgId]);
+    let player;
+
+    if (result.rows.length === 0) {
+      result = await pool.query(
+        'INSERT INTO players (tg_id, username) VALUES ($1, $2) RETURNING *',
+        [tgId, 'Player_' + tgId]
+      );
+      player = result.rows[0];
+      // Выдаем стартовый инвентарь
+      await pool.query(
+        'INSERT INTO inventory (player_id, item_id, qty) VALUES ($1, $2, $3), ($1, $4, $5), ($1, $6, $7)',
+        [player.id, 'apple', 3, 'shield_wood', 1, 'wood', 5]
+      );
+    } else {
+      player = result.rows[0];
+    }
+
+    // Возвращаем ID игрока (в реальном проекте здесь был бы JWT токен)
+    res.json({ playerId: player.id, player });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'DB Error' });
   }
 });
 
-app.get('/api/inventory', authMiddleware, async (req, res) => {
-  const r = await pool.query(`SELECT * FROM inventory WHERE player_id=$1`, [req.player.id]);
-  res.json(r.rows);
-});
-
-app.get('/health', (_, res) => res.send('ok'));
+app.get('/health', (_, res) => res.send('OK'));
 
 const server = http.createServer(app);
 initSockets(server);
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`🚀 TON Haven on :${PORT}`));
+server.listen(PORT, () => console.log(`🚀 Сервер запущен на порту ${PORT}`));
