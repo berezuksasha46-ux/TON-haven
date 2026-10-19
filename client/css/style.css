@@ -1,35 +1,53 @@
-body { margin: 0; padding: 0; overflow: hidden; background: #1a1a1a; font-family: 'Courier New', monospace; -webkit-user-select: none; user-select: none; }
+body { margin: 0; padding: 0; overflow: hidden; background: #121212; font-family: 'Courier New', monospace; -webkit-user-select: none; user-select: none; }
 canvas { display: block; width: 100vw; height: 100vh; image-rendering: pixelated; }
-#hud { position: fixed; top: 10px; left: 10px; color: white; font-size: 16px; font-weight: bold; text-shadow: 2px 2px 0 #000; z-index: 10; }
 
-.joy { position: fixed; bottom: 100px; width: 120px; height: 120px; border-radius: 50%; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.3); z-index: 10; touch-action: none; }
-#joy-left { left: 20px; } #joy-right { right: 20px; background: rgba(255,0,0,0.1); border-color: rgba(255,0,0,0.3); }
-.knob { position: absolute; top: 35px; left: 35px; width: 50px; height: 50px; border-radius: 50%; background: rgba(255,255,255,0.6); pointer-events: none; }
+/* HUD (Здоровье) */
+#hud { position: fixed; top: 15px; left: 15px; z-index: 10; }
+.hp-bar { width: 150px; height: 20px; background: rgba(0,0,0,0.6); border: 2px solid #333; border-radius: 10px; position: relative; overflow: hidden; }
+.hp-fill { height: 100%; background: linear-gradient(90deg, #ff3333, #ff6666); transition: width 0.3s ease; }
+#hp-text { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: white; font-size: 12px; font-weight: bold; text-shadow: 1px 1px 0 #000; }
 
-#hotbar { position: fixed; bottom: 15px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; z-index: 10; }
-.h-slot { width: 55px; height: 55px; background: rgba(0,0,0,0.7); border: 2px solid #666; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 22px; touch-action: none; position: relative; }
-.h-slot.active { border-color: #ffcc00; background: rgba(255,204,0,0.2); }
+/* Джойстики */
+.joy { position: fixed; bottom: 110px; width: 120px; height: 120px; border-radius: 50%; background: rgba(255,255,255,0.05); border: 2px solid rgba(255,255,255,0.2); z-index: 10; touch-action: none; }
+#joy-left { left: 20px; } 
+#joy-right { right: 20px; background: rgba(255,0,0,0.05); border-color: rgba(255,0,0,0.2); }
+.knob { position: absolute; top: 35px; left: 35px; width: 50px; height: 50px; border-radius: 50%; background: rgba(255,255,255,0.4); pointer-events: none; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
 
-#inventory-btn { position: fixed; bottom: 20px; right: 20px; width: 55px; height: 55px; background: rgba(0,0,0,0.7); border: 2px solid #666; border-radius: 8px; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 28px; z-index: 20; cursor: pointer; }
-#shield-btn { position: fixed; bottom: 230px; right: 20px; width: 60px; height: 60px; border-radius: 50%; background: rgba(0, 150, 255, 0.6); border: 3px solid #0096ff; color: white; font-weight: bold; font-size: 12px; display: none; align-items: center; justify-content: center; z-index: 10; touch-action: none; }
+/* Кнопка щита */
+#shield-btn { position: fixed; bottom: 250px; right: 20px; width: 70px; height: 70px; border-radius: 50%; background: rgba(0, 150, 255, 0.6); border: 3px solid #0096ff; color: white; display: none; align-items: center; justify-content: center; font-size: 30px; z-index: 10; touch-action: none; box-shadow: 0 0 15px rgba(0,150,255,0.5); }
 
-#inv-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.7); display: none; z-index: 100; align-items: center; justify-content: center; }
+/* Кнопка инвентаря */
+#inventory-btn { position: fixed; bottom: 20px; right: 20px; width: 60px; height: 60px; background: rgba(0,0,0,0.8); border: 2px solid #444; border-radius: 12px; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 30px; z-index: 20; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+
+/* Хотбар */
+#hotbar { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; z-index: 10; }
+.h-slot { width: 60px; height: 60px; background: rgba(0,0,0,0.8); border: 2px solid #444; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 28px; touch-action: none; position: relative; transition: border-color 0.2s; }
+.h-slot.active { border-color: #ffcc00; box-shadow: 0 0 10px rgba(255,204,0,0.5); }
+
+/* Инвентарь (Окно) */
+#inv-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.8); display: none; z-index: 100; align-items: center; justify-content: center; backdrop-filter: blur(3px); }
 #inv-overlay.open { display: flex; }
-#inv-window { width: 360px; background: #222; border: 3px solid #555; border-radius: 10px; padding: 15px; display: flex; flex-direction: column; gap: 15px; position: relative; }
-.close-btn { position: absolute; top: 10px; right: 10px; width: 30px; height: 30px; background: #cc3333; color: white; border: none; border-radius: 4px; font-weight: bold; font-size: 16px; cursor: pointer; z-index: 10; }
+#inv-window { width: 90%; max-width: 380px; background: #1e1e1e; border: 3px solid #333; border-radius: 15px; padding: 20px; display: flex; flex-direction: column; gap: 15px; position: relative; box-shadow: 0 10px 30px rgba(0,0,0,0.8); }
+.close-btn { position: absolute; top: -15px; right: -15px; width: 40px; height: 40px; background: #cc3333; color: white; border: 2px solid #fff; border-radius: 50%; font-weight: bold; font-size: 18px; cursor: pointer; z-index: 10; display: flex; align-items: center; justify-content: center; }
 
-.char-preview { height: 90px; display: flex; justify-content: center; align-items: flex-end; background: #1a1a1a; border-radius: 8px; padding: 10px; margin-top: 20px; }
-.char-sprite { width: 30px; height: 40px; background: #3498db; position: relative; border-radius: 4px; }
-.char-head { width: 24px; height: 24px; background: #f1c40f; position: absolute; top: -24px; left: 3px; border-radius: 50%; }
+/* Персонаж в инвентаре */
+.char-preview { height: 100px; display: flex; justify-content: center; align-items: flex-end; background: #151515; border-radius: 10px; padding: 15px; border: 1px solid #333; }
+.char-sprite { width: 30px; height: 40px; background: #3498db; position: relative; border-radius: 4px; box-shadow: inset 0 0 10px rgba(0,0,0,0.5); }
+.char-head { width: 26px; height: 26px; background: #f1c40f; position: absolute; top: -26px; left: 2px; border-radius: 50%; }
 
-.equip-container { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
-.eq-slot { width: 45px; height: 45px; background: #1a1a1a; border: 2px solid #444; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 18px; color: #fff; position: relative; }
-.eq-slot span { font-size: 9px; position: absolute; bottom: 1px; }
+/* Слоты экипировки */
+.equip-container { display: flex; justify-content: space-between; gap: 10px; }
+.eq-slot { flex: 1; height: 50px; background: #151515; border: 2px solid #333; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 24px; color: #fff; transition: background 0.2s; }
+.eq-slot:hover { background: #252525; }
 
-.grid-container { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; background: #1a1a1a; padding: 10px; border-radius: 8px; }
-.i-slot { width: 60px; height: 60px; background: #333; border: 2px solid #444; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 24px; position: relative; touch-action: none; }
-.item-count { position: absolute; bottom: 2px; right: 4px; font-size: 12px; font-weight: bold; color: #fff; }
+/* Сетка 4х4 */
+.grid-container { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; background: #151515; padding: 10px; border-radius: 10px; border: 1px solid #333; }
+.i-slot { aspect-ratio: 1; background: #222; border: 2px solid #333; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 24px; position: relative; touch-action: none; transition: transform 0.1s; }
+.i-slot:active { transform: scale(0.95); }
+.item-count { position: absolute; bottom: 2px; right: 4px; font-size: 12px; font-weight: bold; color: #fff; text-shadow: 1px 1px 0 #000; }
 
-.hotbar-in-inv { display: flex; justify-content: center; gap: 8px; margin-top: 5px; }
+/* Хотбар внутри инвентаря */
+.hotbar-in-inv { display: flex; justify-content: space-between; gap: 10px; }
 
-.drag-ghost { position: fixed; font-size: 40px; pointer-events: none; z-index: 9999; transform: translate(-50%, -50%); opacity: 0.8; }
+/* Перетаскивание */
+.drag-ghost { position: fixed; font-size: 40px; pointer-events: none; z-index: 9999; transform: translate(-50%, -50%); opacity: 0.9; filter: drop-shadow(0 5px 5px rgba(0,0,0,0.5)); }
