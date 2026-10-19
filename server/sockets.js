@@ -1,21 +1,45 @@
 import { Server } from 'socket.io';
 import { pool } from './db.js';
 import { ITEMS, RECIPES } from './items.js';
+import { 
+  isHit, 
+  calculateDamage, 
+  isBlockedByShield, 
+  canEat, 
+  applyDamageToMob 
+} from './combat.js';
+import { 
+  ZONES, 
+  isSafe, 
+  isPvP, 
+  getSpawnPoint, 
+  isRed, 
+  updatePKKills, 
+  canAttack 
+} from './zones.js';
 
-// ================= КОНФИГУРАЦИЯ МИРА =================
+// ==================================================
+// ============ КОНФИГУРАЦИЯ МИРА ===================
+// ==================================================
 const TICK_RATE = 1000 / 20; // 20 тиков в секунду
 const worldResources = [
   { id: 'tree_1', type: 'tree', x: 42, y: 38, hp: 100, maxHp: 100, radius: 1.2 },
+  { id: 'tree_2', type: 'tree', x: 38, y: 45, hp: 100, maxHp: 100, radius: 1.2 },
   { id: 'stone_1', type: 'stone', x: 45, y: 48, hp: 150, maxHp: 150, radius: 1.0 },
+  { id: 'iron_1', type: 'iron', x: 50, y: 35, hp: 200, maxHp: 200, radius: 1.0 },
 ];
 const mobs = [
-  { id: 'mob_1', x: 43, y: 42, hp: 80, maxHp: 80, alive: true, speed: 0.03, radius: 0.8 },
+  { id: 'mob_1', x: 43, y: 42, hp: 80, maxHp: 80, alive: true, speed: 0.03, radius: 0.8, type: 'slime' },
+  { id: 'mob_2', x: 48, y: 40, hp: 120, maxHp: 120, alive: true, speed: 0.02, radius: 0.9, type: 'goblin' },
 ];
 let droppedItems = [];
 let projectiles = [];
 let placedStations = [];
+let projIdCounter = 0;
 
-// ================= СОХРАНЕНИЕ В БД =================
+// ==================================================
+// ============ СОХРАНЕНИЕ В БД =====================
+// ==================================================
 async function saveInventory(playerId, itemId, qtyDelta) {
   if (qtyDelta === 0) return;
   await pool.query(`
@@ -24,26 +48,49 @@ async function saveInventory(playerId, itemId, qtyDelta) {
   `, [playerId, itemId, qtyDelta]);
 }
 
-// ================= ПРОВЕРКА ГЕОМЕТРИИ =================
-function isHit(player, targetX, targetY, itemData) {
-  const dx = targetX - player.x, dy = targetY - player.y;
-  const dist = Math.hypot(dx, dy);
-  const angleToTarget = Math.atan2(dy, dx);
-  let diff = Math.abs(player.angle - angleToTarget);
-  if (diff > Math.PI) diff = Math.PI * 2 - diff;
+// ==================================================
+// ============ СТАРТОВЫЙ НАБОР =====================
+// ==================================================
+async function giveStarterKit(playerId, inv) {
+  const starterItems = {
+    pickaxe_wood: 1,  // Чтобы добывать камень
+    axe_wood: 1,      // Чтобы рубить деревья
+    sword_wood: 1,    // Чтобы защищаться
+    apple: 5,         // Еда
+    wood: 10,         // Стартовые ресурсы
+    stone: 10,        // Стартовые ресурсы
+  };
 
-  if (itemData.shape === 'arc') return dist <= itemData.range && diff <= (itemData.arc || 0.8);
-  if (itemData.shape === 'line') return dist <= itemData.range && diff <= (itemData.arc || 0.3);
-  if (itemData.shape === 'ray') return dist <= itemData.range && diff <= 0.1;
-  return false;
+  for (const [itemId, qty] of Object.entries(starterItems)) {
+    if (!inv[itemId] || inv[itemId] < 1) {
+      inv[itemId] = qty;
+      await saveInventory(playerId, itemId, qty);
+    }
+  }
 }
 
-// ================= ОСНОВНАЯ ФУНКЦИЯ =================
+// ==================================================
+// ============ ПРОВЕРКА БЛИЗОСТИ СТАНКА ============
+// ==================================================
+function isNearStation(player, stationType) {
+  return placedStations.some(st => 
+    st.itemId === `station_${stationType}` && 
+    Math.hypot(st.x - player.x, st.y - player.y) < 2.5
+  );
+}
+
+// ==================================================
+// ================= ОСНОВНАЯ ЛОГИКА ================
+// ==================================================
 export function initSockets(httpServer) {
-  const io = new Server(httpServer, { cors: { origin: '*' }, pingInterval: 25000, pingTimeout: 20000 });
+  const io = new Server(httpServer, { 
+    cors: { origin: '*' }, 
+    pingInterval: 25000, 
+    pingTimeout: 20000 
+  });
   const players = new Map();
 
-  // Защита Render от засыпания
+  // Self-ping для Render (чтобы сервер не засыпал)
   setInterval(() => {
     fetch(`http://localhost:${process.env.PORT || 3000}/health`).catch(() => {});
   }, 10 * 60 * 1000);
@@ -53,61 +100,98 @@ export function initSockets(httpServer) {
     if (!playerId) return socket.disconnect();
 
     try {
-      // Загрузка игрока из БД
+      // 1. Загрузка игрока из БД
       const dbRes = await pool.query('SELECT * FROM players WHERE id = $1', [playerId]);
       if (dbRes.rows.length === 0) return socket.disconnect();
       
-      // Загрузка инвентаря
+      // 2. Загрузка инвентаря
       const invData = (await pool.query('SELECT item_id, qty FROM inventory WHERE player_id = $1', [playerId])).rows;
       const inv = {};
       invData.forEach(i => inv[i.item_id] = i.qty);
       
-      // Стартовый набор
-      if (Object.keys(inv).length === 0) {
-        inv['sword_wood'] = 1; inv['apple'] = 5; inv['wood'] = 10; inv['stone'] = 10;
-        await saveInventory(playerId, 'sword_wood', 1);
-        await saveInventory(playerId, 'apple', 5);
-        await saveInventory(playerId, 'wood', 10);
-        await saveInventory(playerId, 'stone', 10);
-      }
+      // 3. Выдача стартового набора (если пусто)
+      await giveStarterKit(playerId, inv);
 
+      // 4. Создание состояния игрока
       const state = {
-        id: playerId, socket: socket, x: 40, y: 40, angle: 0,
-        hp: dbRes.rows[0].hp || 100, maxHp: 100,
-        inv, hotbar: ['sword_wood', 'apple', null, null],
+        id: playerId, 
+        socket: socket, 
+        x: 40, y: 40, angle: 0, zone: 'hub',
+        hp: dbRes.rows[0].hp || 100, 
+        maxHp: 100,
+        inv, 
+        hotbar: ['sword_wood', 'pickaxe_wood', 'apple', null], // Стартовый хотбар
         equip: { helmet: null, chest: null, legs: null, boots: null, shield: null, ring: null },
-        activeSlot: 0, isBlocking: false, lastFoodAt: 0, lastAttackAt: 0,
-        lastMoveTime: Date.now(), lastX: 40, lastY: 40
+        activeSlot: 0, 
+        isBlocking: false, 
+        lastFoodAt: 0, 
+        lastAttackAt: 0,
+        lastMoveTime: Date.now(), 
+        lastX: 40, lastY: 40,
+        pkKills: 0, 
+        redUntil: null
       };
       
       players.set(playerId, state);
       socket.join(`player:${playerId}`);
       socket.emit('init', { state, stations: placedStations });
+      
+      // Отправляем обновление всем, что игрок зашел
+      io.emit('worldUpdate', {
+        players: Array.from(players.values()).map(({socket, ...rest}) => rest),
+        mobs, resources: worldResources, drops: droppedItems, projectiles, stations: placedStations
+      });
 
-      // --- ДВИЖЕНИЕ С АНТИЧИТОМ ---
+      // ==========================================
+      // ============ ДВИЖЕНИЕ ====================
+      // ==========================================
       socket.on('move', (data) => {
         const p = players.get(playerId);
         if (!p) return;
-        const now = Date.now(), dt = (now - p.lastMoveTime) / 1000;
-        if (dt > 0 && Math.hypot(data.x - p.lastX, data.y - p.lastY) / dt > 0.8) return;
         
+        // Античит: проверка скорости
+        const now = Date.now();
+        const dt = (now - p.lastMoveTime) / 1000;
+        if (dt > 0) {
+          const dist = Math.hypot(data.x - p.lastX, data.y - p.lastY);
+          if (dist / dt > 0.8) return; // Слишком быстро
+        }
+        
+        // Коллизия с ресурсами и станками
         let blocked = false;
-        worldResources.forEach(res => { if (res.hp > 0 && Math.hypot(data.x - res.x, data.y - res.y) < res.radius) blocked = true; });
-        placedStations.forEach(st => { if (Math.hypot(data.x - st.x, data.y - st.y) < 1.0) blocked = true; });
+        worldResources.forEach(res => { 
+          if (res.hp > 0 && Math.hypot(data.x - res.x, data.y - res.y) < res.radius) blocked = true; 
+        });
+        placedStations.forEach(st => { 
+          if (Math.hypot(data.x - st.x, data.y - st.y) < 1.0) blocked = true; 
+        });
         if (blocked) return;
 
-        p.x = data.x; p.y = data.y; p.angle = data.angle;
-        p.lastMoveTime = now; p.lastX = data.x; p.lastY = data.y;
+        p.x = data.x; 
+        p.y = data.y; 
+        p.angle = data.angle;
+        p.lastMoveTime = now; 
+        p.lastX = data.x; 
+        p.lastY = data.y;
       });
 
-      // --- ВЫБОР СЛОТА ---
-      socket.on('selectSlot', (index) => { const p = players.get(playerId); if (p) p.activeSlot = index; });
+      // ==========================================
+      // ============ СМЕНА СЛОТА =================
+      // ==========================================
+      socket.on('selectSlot', (index) => { 
+        const p = players.get(playerId); 
+        if (p) p.activeSlot = index; 
+      });
 
-      // --- ПЕРЕМЕЩЕНИЕ ПРЕДМЕТОВ ---
+      // ==========================================
+      // ============ ИНВЕНТАРЬ ===================
+      // ==========================================
       socket.on('moveItem', ({ from, to, itemId }) => {
         const p = players.get(playerId);
         if (!p) return;
+        
         const itemData = ITEMS[itemId];
+        // Валидация: нельзя надеть меч в слот шлема
         if (to.type === 'equip' && itemData && itemData.slot !== to.slot) return;
         
         let swapped = null;
@@ -120,19 +204,30 @@ export function initSockets(httpServer) {
         socket.emit('updateHotbar', p.hotbar);
       });
 
-      // --- КРАФТ ---
+      // ==========================================
+      // ============ КРАФТ =======================
+      // ==========================================
       socket.on('craft', ({ recipeId, stationId }) => {
         const p = players.get(playerId);
         const recipe = RECIPES[recipeId];
         if (!p || !recipe) return;
 
-        if (recipe.station && stationId !== recipe.station) return socket.emit('error', 'Нужен правильный станок!');
+        // 1. Проверка станка
+        if (recipe.station && !isNearStation(p, recipe.station)) {
+          return socket.emit('error', `Нужен станок: ${ITEMS[recipe.station]?.name || recipe.station}. Подойдите ближе.`);
+        }
+
+        // 2. Проверка ресурсов
         for (const [res, qty] of Object.entries(recipe.cost)) {
-          if (!p.inv[res] || p.inv[res] < qty) return socket.emit('error', 'Недостаточно ресурсов!');
+          if (!p.inv[res] || p.inv[res] < qty) {
+            return socket.emit('error', 'Недостаточно ресурсов!');
+          }
         }
         
+        // 3. Списание и выдача
         for (const [res, qty] of Object.entries(recipe.cost)) {
-          p.inv[res] -= qty; saveInventory(p.id, res, -qty);
+          p.inv[res] -= qty; 
+          saveInventory(p.id, res, -qty);
         }
         p.inv[recipeId] = (p.inv[recipeId] || 0) + 1;
         saveInventory(p.id, recipeId, 1);
@@ -141,46 +236,72 @@ export function initSockets(httpServer) {
         socket.emit('craftSuccess', recipeId);
       });
 
-      // --- УСТАНОВКА СТАНКОВ ---
+      // ==========================================
+      // ============ УСТАНОВКА СТАНКОВ ===========
+      // ==========================================
       socket.on('placeStation', ({ itemId }) => {
         const p = players.get(playerId);
         if (!p || !p.inv[itemId] || p.inv[itemId] <= 0) return;
         if (ITEMS[itemId].type !== 'station') return;
 
-        p.inv[itemId] -= 1; saveInventory(p.id, itemId, -1);
-        const newStation = { id: Date.now().toString(), itemId, x: p.x + 1, y: p.y, ownerId: p.id };
+        p.inv[itemId] -= 1; 
+        saveInventory(p.id, itemId, -1);
+        
+        const newStation = { 
+          id: Date.now().toString(), 
+          itemId, 
+          x: p.x + 1, 
+          y: p.y, 
+          ownerId: p.id 
+        };
         placedStations.push(newStation);
+        
         socket.emit('updateInv', p.inv);
         io.emit('stationPlaced', newStation);
       });
 
-      // --- АТАКА ---
+      // ==========================================
+      // ============ АТАКА =======================
+      // ==========================================
       socket.on('attack', () => {
         const p = players.get(playerId);
         if (!p || p.isBlocking) return;
+        
         const itemId = p.hotbar[p.activeSlot];
         const itemData = ITEMS[itemId];
         if (!itemData) return;
+
+        // Кулдаун атаки (зависит от оружия)
         if (Date.now() - p.lastAttackAt < (itemData.atkSpeed || 500)) return;
         p.lastAttackAt = Date.now();
 
-        // Еда
+        // 1. Еда
         if (itemData.type === 'food') {
-          if (Date.now() - p.lastFoodAt < 15000) return socket.emit('error', 'Кулдаун 15 сек!');
+          if (!canEat(p.lastFoodAt)) return socket.emit('error', 'Кулдаун 15 сек!');
           p.hp = Math.min(p.maxHp, p.hp + (itemData.heal || 0));
           p.lastFoodAt = Date.now();
           socket.emit('hp', p.hp);
           return;
         }
 
-        // Оружие и инструменты
+        // 2. Лечение (Книга исцеления)
+        if (itemData.shape === 'heal') {
+          p.hp = Math.min(p.maxHp, p.hp + (itemData.heal || 0));
+          socket.emit('hp', p.hp);
+          return;
+        }
+
+        // 3. Оружие и инструменты
         if (itemData.type === 'weapon' || itemData.type === 'tool') {
-          // Ближний бой
+          let hitSomething = false;
+
+          // 3.1. Ближний бой (мобы)
           mobs.forEach(mob => {
             if (!mob.alive) return;
             if (isHit(p, mob.x, mob.y, itemData)) {
-              mob.hp -= (itemData.dmg || 10);
-              if (mob.hp <= 0) {
+              hitSomething = true;
+              const isDead = applyDamageToMob(mob, itemData.dmg || 10);
+              if (isDead) {
                 mob.alive = false;
                 droppedItems.push({ x: mob.x, y: mob.y, item: 'wood', qty: 2 });
                 setTimeout(() => { mob.hp = mob.maxHp; mob.alive = true; }, 5000);
@@ -188,71 +309,206 @@ export function initSockets(httpServer) {
             }
           });
 
-          // Добыча
+          // 3.2. Ближний бой (другие игроки — PvP)
+          players.forEach(target => {
+            if (target.id === p.id || target.hp <= 0) return;
+            if (isHit(p, target.x, target.y, itemData)) {
+              // Проверка PvP-правил
+              if (!canAttack(p, target, false)) return;
+              
+              // Проверка блока щитом
+              if (target.isBlocking && target.equip.shield) {
+                const shieldData = ITEMS[target.equip.shield];
+                const attackAngle = Math.atan2(p.y - target.y, p.x - target.x);
+                if (isBlockedByShield(shieldData, target.angle, attackAngle)) {
+                  return; // Удар заблокирован
+                }
+              }
+
+              // Урон с учетом брони
+              const targetEquipData = {};
+              for (const [slot, itemId] of Object.entries(target.equip)) {
+                if (itemId && ITEMS[itemId]) targetEquipData[slot] = ITEMS[itemId];
+              }
+              const finalDmg = calculateDamage(itemData.dmg || 10, target, targetEquipData);
+              
+              target.hp -= finalDmg;
+              hitSomething = true;
+
+              // Смерть игрока
+              if (target.hp <= 0) {
+                target.hp = 0;
+                // Дропаем ресурсы (но не экипировку)
+                for (const [res, qty] of Object.entries(target.inv)) {
+                  if (qty > 0 && ['wood', 'stone', 'iron_ore', 'cobalt_ore', 'adamantite_ore', 'holy_ore', 'leather', 'string'].includes(res)) {
+                    droppedItems.push({ x: target.x, y: target.y, item: res, qty });
+                    target.inv[res] = 0;
+                    saveInventory(target.id, res, -qty);
+                  }
+                }
+                target.socket.emit('updateInv', target.inv);
+                
+                // Респавн в хабе
+                const spawn = getSpawnPoint('hub', target.id);
+                target.x = spawn.x; target.y = spawn.y; target.zone = 'hub';
+                target.hp = target.maxHp;
+                target.socket.emit('hp', target.hp);
+                target.socket.emit('error', 'Вы погибли! Потерян лут, но броня и оружие сохранены.');
+
+                // Обновляем PK у убийцы
+                const pkResult = updatePKKills(p);
+                if (pkResult.redUntil) {
+                  p.socket.emit('error', 'Вы стали Красным Ником на 3 минуты!');
+                }
+              }
+            }
+          });
+
+          // 3.3. Добыча ресурсов
           worldResources.forEach(res => {
             if (res.hp <= 0) return;
             if (isHit(p, res.x, res.y, itemData)) {
+              hitSomething = true;
               let dmg = 5;
+              // Урон зависит от типа инструмента
               if (res.type === 'tree' && itemId.includes('axe')) dmg = 25;
               if (res.type === 'stone' && itemId.includes('pickaxe')) dmg = 25;
+              if (res.type === 'iron' && itemId.includes('pickaxe') && (itemData.tier || 1) >= 2) dmg = 20;
+              if (res.type === 'cobalt' && itemId.includes('pickaxe') && (itemData.tier || 1) >= 3) dmg = 20;
+              
               res.hp -= dmg;
               if (res.hp <= 0) {
-                droppedItems.push({ x: res.x, y: res.y, item: res.type === 'tree' ? 'wood' : 'stone', qty: 5 });
+                let dropItem = res.type === 'tree' ? 'wood' : res.type;
+                if (res.type === 'iron') dropItem = 'iron_ore';
+                droppedItems.push({ x: res.x, y: res.y, item: dropItem, qty: 5 });
                 setTimeout(() => { res.hp = res.maxHp; }, 10000);
               }
             }
           });
 
-          // Снаряды
+          // 3.4. Снаряды (лук, посох)
           if (itemData.shape === 'projectile' || itemData.shape === 'aoe_proj') {
             projectiles.push({
-              id: Date.now() + Math.random(), x: p.x, y: p.y, angle: p.angle,
-              speed: itemData.projSpeed || 0.4, dmg: itemData.dmg,
-              aoe: itemData.aoeRadius || 0, type: itemData.shape, owner: p.id
+              id: ++projIdCounter, 
+              x: p.x, y: p.y, angle: p.angle,
+              speed: itemData.projSpeed || 0.4, 
+              dmg: itemData.dmg,
+              aoe: itemData.aoeRadius || 0, 
+              type: itemData.shape, 
+              owner: p.id,
+              poison: itemData.poison,
+              slow: itemData.slow
+            });
+            hitSomething = true;
+          }
+
+          if (hitSomething) {
+            io.emit('worldUpdate', {
+              players: Array.from(players.values()).map(({socket, ...rest}) => rest),
+              mobs, resources: worldResources, drops: droppedItems, projectiles, stations: placedStations
             });
           }
         }
       });
 
-      socket.on('disconnect', () => players.delete(playerId));
-    } catch (err) { console.error('Socket error:', err); }
+      // ==========================================
+      // ============ ОТКЛЮЧЕНИЕ ==================
+      // ==========================================
+      socket.on('disconnect', () => {
+        players.delete(playerId);
+        io.emit('worldUpdate', {
+          players: Array.from(players.values()).map(({socket, ...rest}) => rest),
+          mobs, resources: worldResources, drops: droppedItems, projectiles, stations: placedStations
+        });
+      });
+
+    } catch (err) { 
+      console.error('Ошибка подключения:', err); 
+    }
   });
 
-  // ================= ИГРОВОЙ ЦИКЛ =================
+  // ==================================================
+  // ============ ИГРОВОЙ ЦИКЛ (ТИКИ) =================
+  // ==================================================
   setInterval(() => {
-    // 1. Снаряды
+    // 1. Обновление снарядов
     for (let i = projectiles.length - 1; i >= 0; i--) {
-      const p = projectiles[i];
-      p.x += Math.cos(p.angle) * p.speed; p.y += Math.sin(p.angle) * p.speed;
+      const pr = projectiles[i];
+      pr.x += Math.cos(pr.angle) * pr.speed;
+      pr.y += Math.sin(pr.angle) * pr.speed;
+      
       let hit = false;
+
+      // Попадание в мобов
       mobs.forEach(mob => {
-        if (mob.alive && Math.hypot(mob.x - p.x, mob.y - p.y) < (p.aoe || 1)) {
-          mob.hp -= p.dmg;
-          if (mob.hp <= 0) { mob.alive = false; droppedItems.push({ x: mob.x, y: mob.y, item: 'wood', qty: 2 }); setTimeout(() => { mob.hp = mob.maxHp; mob.alive = true; }, 5000); }
+        if (mob.alive && Math.hypot(mob.x - pr.x, mob.y - pr.y) < (pr.aoe || 1)) {
+          if (applyDamageToMob(mob, pr.dmg)) {
+            mob.alive = false;
+            droppedItems.push({ x: mob.x, y: mob.y, item: 'wood', qty: 2 });
+            setTimeout(() => { mob.hp = mob.maxHp; mob.alive = true; }, 5000);
+          }
           hit = true;
         }
       });
-      if (hit || p.x < 0 || p.x > 100 || p.y < 0 || p.y > 100) projectiles.splice(i, 1);
+
+      // Попадание в игроков (PvP)
+      if (!hit) {
+        players.forEach(target => {
+          if (target.id === pr.owner || target.hp <= 0) return;
+          if (Math.hypot(target.x - pr.x, target.y - pr.y) < (pr.aoe || 1)) {
+            const attacker = players.get(pr.owner);
+            if (attacker && canAttack(attacker, target, false)) {
+              const targetEquipData = {};
+              for (const [slot, itemId] of Object.entries(target.equip)) {
+                if (itemId && ITEMS[itemId]) targetEquipData[slot] = ITEMS[itemId];
+              }
+              const finalDmg = calculateDamage(pr.dmg, target, targetEquipData);
+              target.hp -= finalDmg;
+              target.socket.emit('hp', target.hp);
+              if (target.hp <= 0) {
+                target.hp = 0;
+                const spawn = getSpawnPoint('hub', target.id);
+                target.x = spawn.x; target.y = spawn.y; target.zone = 'hub';
+                target.hp = target.maxHp;
+                target.socket.emit('hp', target.hp);
+                target.socket.emit('error', 'Вы погибли от снаряда!');
+              }
+              hit = true;
+            }
+          }
+        });
+      }
+
+      if (hit || pr.x < 0 || pr.x > 100 || pr.y < 0 || pr.y > 100) {
+        projectiles.splice(i, 1);
+      }
     }
 
-    // 2. Мобы
+    // 2. Логика мобов (движение к ближайшему игроку)
     mobs.forEach(mob => {
       if (!mob.alive) return;
       let nearest = null; let minDist = 999;
+      
       players.forEach(p => {
         const d = Math.hypot(p.x - mob.x, p.y - mob.y);
         if (d < minDist) { minDist = d; nearest = p; }
       });
+      
       if (nearest && minDist < 10 && minDist > 1.5) {
         let newX = mob.x + ((nearest.x - mob.x) / minDist) * mob.speed;
         let newY = mob.y + ((nearest.y - mob.y) / minDist) * mob.speed;
+        
+        // Коллизия с ресурсами
         let blocked = false;
-        worldResources.forEach(res => { if (res.hp > 0 && Math.hypot(newX - res.x, newY - res.y) < res.radius) blocked = true; });
+        worldResources.forEach(res => { 
+          if (res.hp > 0 && Math.hypot(newX - res.x, newY - res.y) < res.radius) blocked = true; 
+        });
+        
         if (!blocked) { mob.x = newX; mob.y = newY; }
       }
     });
 
-    // 3. Лут
+    // 3. Подбор лута
     players.forEach(p => {
       for (let i = droppedItems.length - 1; i >= 0; i--) {
         const drop = droppedItems[i];
@@ -265,9 +521,11 @@ export function initSockets(httpServer) {
       }
     });
 
+    // 4. Рассылка обновления мира
     io.emit('worldUpdate', {
       players: Array.from(players.values()).map(({socket, ...rest}) => rest),
       mobs, resources: worldResources, drops: droppedItems, projectiles, stations: placedStations
     });
+
   }, TICK_RATE);
 }
