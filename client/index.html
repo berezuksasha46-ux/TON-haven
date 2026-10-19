@@ -10,24 +10,54 @@
 </head>
 <body>
   <div id="hud">HP: <span id="hp-val">100</span>/100</div>
-  <div id="inventory-btn">🎒</div>
   
+  <!-- Джойстики -->
   <div id="joy-left" class="joy"><div class="knob" id="knob-left"></div></div>
   <div id="joy-right" class="joy"><div class="knob" id="knob-right"></div></div>
+  
+  <!-- Кнопка блока (появляется при надевании щита) -->
   <div id="shield-btn">БЛОК</div>
 
+  <!-- Хотбар (внизу) -->
+  <div id="hotbar">
+    <div class="hotbar-slot active" data-type="food">Еда</div>
+    <div class="hotbar-slot" data-type="weapon">Меч</div>
+    <div class="hotbar-slot" data-type="tool">Кирка</div>
+    <div class="hotbar-slot" data-type="shield">Щит</div>
+  </div>
+
+  <!-- Кнопка открытия инвентаря -->
+  <div id="inventory-btn">🎒</div>
+
+  <!-- Окно инвентаря -->
   <div id="inventory-panel">
-    <div class="inv-left">
-      <h3 style="color:white; margin:0 0 10px 0;">Экипировка</h3>
-      <div class="equip-slot" data-type="helmet">Шлем</div>
-      <div class="equip-slot" data-type="chest">Нагрудник</div>
-      <div class="equip-slot" data-type="legs">Штаны</div>
-      <div class="equip-slot" data-type="boots">Ботинки</div>
-      <div class="equip-slot" id="slot-shield" data-type="shield">Щит</div>
+    <!-- 1. Персонаж -->
+    <div class="char-preview">
+      <div class="char-body">
+        <div class="char-head"></div>
+      </div>
     </div>
-    <div class="inv-right" id="inv-grid">
-      <!-- Сетка 4х4 будет создана через JS -->
+
+    <!-- 2. Экипировка -->
+    <div class="equip-row">
+      <div class="equip-slot" data-type="helmet"><span>🪖</span>Шлем</div>
+      <div class="equip-slot" data-type="chest"><span>🛡️</span>Броня</div>
+      <div class="equip-slot" data-type="legs"><span>👖</span>Штаны</div>
+      <div class="equip-slot" data-type="boots"><span>👢</span>Ботинки</div>
+      <div class="equip-slot" id="slot-shield" data-type="shield"><span>🛡️</span>Щит</div>
+      <div class="equip-slot" data-type="ring"><span>💍</span>Кольцо</div>
     </div>
+
+    <!-- 3. Разделитель -->
+    <div class="divider"></div>
+
+    <!-- 4. Сетка 16 слотов (Инвентарь) -->
+    <div class="inv-grid" id="inv-grid">
+      <!-- Заполняется через JS -->
+    </div>
+    
+    <!-- (Хотбар в инвентаре мы делаем общим с нижним хотбаром, чтобы вещи перетаскивались, 
+         но визуально он находится внизу, как вы и просили) -->
   </div>
 
   <canvas id="game"></canvas>
@@ -37,7 +67,6 @@
     const tg = window.Telegram?.WebApp;
     if (tg) { tg.ready(); tg.expand(); }
 
-    // --- ЗАГРУЗКА ИГРЫ ---
     const canvas = document.getElementById('game');
     const ctx = canvas.getContext('2d');
     function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
@@ -45,7 +74,8 @@
 
     let myPlayer = { id: -1, x: 40, y: 40, angle: 0, hp: 100, maxHp: 100, weapon: 'sword' };
     let allPlayers = [], allResources = [], allMobs = [], allDrops = [], allProjectiles = [];
-    let inventory = { wood: 0, apple: 5, shield_wood: 1 }; // Дадим тестовый щит
+    // Тестовый инвентарь
+    let inventory = { wood: 5, apple: 3, shield_wood: 1 }; 
     let socket = null;
     let attackCharge = 0;
     let isBlocking = false;
@@ -58,39 +88,38 @@
       slot.className = 'inv-slot';
       invGrid.appendChild(slot);
     }
+
+    // Отрисовка предметов в инвентаре
     function renderInventory() {
       const slots = document.querySelectorAll('.inv-slot');
       slots.forEach((s, i) => s.innerHTML = '');
       
-      // Выводим дерево
       if (inventory.wood > 0) {
-        slots[0].innerHTML = `<span>Wood</span><span class="item-count">${inventory.wood}</span>`;
+        slots[0].innerHTML = `<span style="color:#8B4513">🪵</span><span class="item-count">${inventory.wood}</span>`;
       }
-      // Выводим еду
       if (inventory.apple > 0) {
-        slots[1].innerHTML = `<span>Apple</span><span class="item-count">${inventory.apple}</span>`;
+        slots[1].innerHTML = `<span style="color:#ff0000">🍎</span><span class="item-count">${inventory.apple}</span>`;
       }
-      // Выводим щит
       if (inventory.shield_wood > 0) {
-        slots[2].innerHTML = `<span>Щит</span><span class="item-count">${inventory.shield_wood}</span>`;
+        slots[2].innerHTML = `<span style="color:#0096ff">🛡️</span><span class="item-count">${inventory.shield_wood}</span>`;
       }
     }
-
-    // Клик по слоту щита в инвентаре
-    document.getElementById('slot-shield').addEventListener('click', () => {
-      if (inventory.shield_wood > 0) {
-        equippedShield = 'shield_wood';
-        document.getElementById('slot-shield').innerText = 'Щит (Надет)';
-        document.getElementById('shield-btn').style.display = 'flex'; // Показываем кнопку блока
-        socket.emit('equipShield', { itemId: 'shield_wood' });
-      }
-    });
 
     // Открытие/закрытие инвентаря
     document.getElementById('inventory-btn').addEventListener('click', () => {
       const panel = document.getElementById('inventory-panel');
       panel.classList.toggle('open');
       if (panel.classList.contains('open')) renderInventory();
+    });
+
+    // Экипировка щита
+    document.getElementById('slot-shield').addEventListener('click', () => {
+      if (inventory.shield_wood > 0 && !equippedShield) {
+        equippedShield = 'shield_wood';
+        document.getElementById('slot-shield').innerHTML = '<span>🛡️</span>Надет';
+        document.getElementById('shield-btn').style.display = 'flex';
+        socket.emit('equipShield', { itemId: 'shield_wood' });
+      }
     });
 
     // СЕТЬ
@@ -104,20 +133,18 @@
       myPlayer.id = Number(player.id);
       socket = io({ auth: { playerId: myPlayer.id } });
       
-      socket.on('welcome', ({ state }) => { myPlayer.x = state.x; myPlayer.y = state.y; inventory = state.inv; updateUI(); });
-
+      socket.on('welcome', ({ state }) => { myPlayer.x = state.x; myPlayer.y = state.y; if(state.inv) inventory = state.inv; updateUI(); });
       socket.on('zoneState', (players, res, mobs, drops, projs) => {
         allPlayers = players.filter(p => Number(p.id) !== myPlayer.id);
         allResources = res; allMobs = mobs; allDrops = drops; allProjectiles = projs;
       });
-
       socket.on('updateInv', (inv) => { inventory = inv; updateUI(); if (document.getElementById('inventory-panel').classList.contains('open')) renderInventory(); });
       socket.on('updateHp', (hp) => { myPlayer.hp = hp; updateUI(); });
     });
 
     function updateUI() { document.getElementById('hp-val').innerText = Math.round(myPlayer.hp); }
 
-    // ДЖОЙСТИКИ (ТЗ: Левый ходит, правый целится/бьет)
+    // ДЖОЙСТИКИ
     let moveVec = { x: 0, y: 0 };
     function setupJoystick(joyId, knobId, onChange, onRelease) {
       const joy = document.getElementById(joyId); const knob = document.getElementById(knobId);
@@ -134,7 +161,6 @@
       attackCharge = 0;
     });
 
-    // Кнопка блока
     const shieldBtn = document.getElementById('shield-btn');
     shieldBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); isBlocking = true; socket.emit('shield', { active: true }); });
     shieldBtn.addEventListener('pointerup', (e) => { e.preventDefault(); isBlocking = false; socket.emit('shield', { active: false }); });
@@ -154,7 +180,7 @@
       for (let i = -gridSize; i < canvas.height + gridSize; i += gridSize) { ctx.moveTo(0, i - offsetY); ctx.lineTo(canvas.width, i - offsetY); }
       ctx.stroke();
 
-      // Рисуем всё (ресурсы, мобы, дроп, снаряды)
+      // Мир
       allResources.forEach(res => {
         const px = cx + (res.x - myPlayer.x) * gridSize; const py = cy + (res.y - myPlayer.y) * gridSize;
         if (res.type === 'tree') { ctx.fillStyle = '#5c3a21'; ctx.fillRect(px - 6, py - 10, 12, 20); ctx.fillStyle = '#2d6a2e'; ctx.fillRect(px - 15, py - 25, 30, 20); }
@@ -166,11 +192,9 @@
       // Персонаж
       ctx.fillStyle = '#3498db'; ctx.fillRect(cx - 10, cy - 10, 20, 20);
       ctx.fillStyle = '#f1c40f'; ctx.fillRect(cx - 6, cy - 20, 12, 12);
-
-      // Прицел
       ctx.strokeStyle = 'white'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(myPlayer.angle) * 30, cy + Math.sin(myPlayer.angle) * 30); ctx.stroke();
 
-      // Визуализация щита (Синяя дуга 200 градусов)
+      // Щит (Синяя дуга)
       if (isBlocking && equippedShield) {
         ctx.strokeStyle = '#0096ff'; ctx.lineWidth = 6;
         ctx.beginPath(); ctx.arc(cx, cy, 28, myPlayer.angle - 1.74, myPlayer.angle + 1.74); ctx.stroke();
@@ -180,7 +204,6 @@
 
       requestAnimationFrame(loop);
     }
-
     loop();
   </script>
 </body>
