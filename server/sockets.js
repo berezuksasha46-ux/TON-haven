@@ -6,7 +6,6 @@ export const worldResources = [
   { id: 'tree_1', type: 'tree', x: 42, y: 38, hp: 100 },
   { id: 'stone_1', type: 'stone', x: 45, y: 48, hp: 150 },
 ];
-
 export const mobs = [
   { id: 'mob_1', x: 45, y: 40, hp: 100, maxHp: 100, alive: true, speed: 0.02 },
 ];
@@ -34,22 +33,22 @@ export function initSockets(httpServer) {
     const invData = (await pool.query(`SELECT item_id, qty FROM inventory WHERE player_id=$1`, [playerId])).rows;
     const inventory = {};
     invData.forEach(i => inventory[i.item_id] = i.qty);
+    
+    // Дефолтные предметы для теста
+    if (!inventory['wood']) inventory['wood'] = 5;
+    if (!inventory['apple']) inventory['apple'] = 3;
+    if (!inventory['shield_wood']) inventory['shield_wood'] = 1;
 
     const state = {
       id: playerId, zone: 'hub', x: 40, y: 40, angle: 0,
       hp: dbp.hp, maxHp: dbp.max_hp,
-      hotbar: ['apple', 'sword', 'pickaxe', 'shield_wood'], // В слотах быстрого доступа
+      hotbar: ['apple', 'sword', 'pickaxe', null], // Хотбар
       activeSlot: 0,
-      equipment: { helmet: null, chest: null, legs: null, boots: null, shield: null, ring: null },
+      equipment: { helmet: null, chest: null, legs: null, boots: null, shield: 'shield_wood', ring: null },
       isBlocking: false,
       inv: inventory, lastFoodAt: dbp.last_food_at
     };
     
-    // Автоматически надеваем щит, если он есть в инвентаре (для теста)
-    if (state.inv['shield_wood'] > 0) {
-      state.equipment.shield = 'shield_wood';
-    }
-
     joinZone('hub', state);
     socket.emit('welcome', { state });
     broadcastZone();
@@ -70,85 +69,61 @@ export function initSockets(httpServer) {
       }
     });
 
-    // Выбор активного слота (1-4)
-    socket.on('selectSlot', ({ slot }) => {
-      state.activeSlot = slot;
+    // Перетаскивание предметов (Drag and Drop)
+    socket.on('moveItem', ({ from, to }) => {
+      // from / to: { type: 'inv', index: 0 } или { type: 'hotbar', index: 0 } или { type: 'equip', slot: 'shield' }
+      
+      if (from.type === 'equip') {
+        state.equipment[from.slot] = null;
+      } else if (from.type === 'hotbar') {
+        state.hotbar[from.index] = null;
+      }
+
+      if (to.type === 'equip') {
+        state.equipment[to.slot] = from.itemId;
+      } else if (to.type === 'hotbar') {
+        state.hotbar[to.index] = from.itemId;
+      }
+
       broadcastZone();
     });
 
-    // Экипировка (перетаскивание в слот брони)
-    socket.on('equipItem', ({ slot, itemId }) => {
-      state.equipment[slot] = itemId;
-      broadcastZone();
-    });
-
-    socket.on('shield', ({ active }) => {
-      if (!state.equipment.shield) return; // Нельзя блокировать без щита
-      state.isBlocking = active;
-      broadcastZone();
+    // Использование предмета (клик по хотбару)
+    socket.on('useItem', ({ itemId }) => {
+      if (itemId === 'apple') {
+        if (Date.now() - new Date(state.lastFoodAt).getTime() < 15000) return socket.emit('errorMsg', 'Кулдаун 15 сек!');
+        state.hp = Math.min(state.maxHp, state.hp + 20);
+        state.lastFoodAt = new Date();
+        socket.emit('updateHp', state.hp);
+      }
     });
 
     socket.on('attack', ({ angle }) => {
-      if (state.isBlocking) return; // Нельзя бить в блоке
-      
-      const activeItem = state.hotbar[state.activeSlot];
+      if (state.isBlocking) return;
+      let activeItem = state.hotbar[state.activeSlot];
       if (!activeItem) return;
 
-      let range = 2.0;
-      if (activeItem === 'sword') range = 2.5;
-      if (activeItem === 'bow') range = 6.0;
-      if (activeItem === 'pickaxe') range = 1.5;
-
-      // Атака оружием
+      let range = activeItem === 'bow' ? 6.0 : 2.0;
       if (activeItem === 'bow') {
         projectiles.push({ id: ++projIdCounter, type: 'arrow', x: state.x, y: state.y, dx: Math.cos(angle)*0.4, dy: Math.sin(angle)*0.4, ownerId: playerId, life: 60 });
         return broadcastZone();
       }
-
-      // Ближний бой / Добыча
+      
       let hit = false;
-      worldResources.forEach(res => {
-        if (res.hp <= 0) return;
-        const dist = Math.hypot(res.x - state.x, res.y - state.y);
-        if (dist <= range) {
-          const a = Math.atan2(res.y - state.y, res.x - state.x);
-          let delta = Math.abs(a - angle); while (delta > Math.PI) delta = Math.abs(delta - Math.PI * 2);
-          if (delta <= 0.6) {
-            hit = true; res.hp -= (activeItem === 'pickaxe' ? 25 : 5);
-            if (res.hp <= 0) {
-              droppedItems.push({ x: res.x, y: res.y, itemId: res.type === 'tree' ? 'wood' : 'stone', qty: 5 });
-              setTimeout(() => { res.hp = res.type === 'tree' ? 100 : 150; broadcastZone(); }, 10000);
-            }
-          }
-        }
-      });
-
       mobs.forEach(mob => {
         if (!mob.alive) return;
-        const dist = Math.hypot(mob.x - state.x, mob.y - state.y);
-        if (dist <= range) {
-          const a = Math.atan2(mob.y - state.y, mob.x - state.x);
-          let delta = Math.abs(a - angle); while (delta > Math.PI) delta = Math.abs(delta - Math.PI * 2);
-          if (delta <= 0.6) {
-            hit = true; mob.hp -= (activeItem === 'sword' ? 30 : 10);
-            if (mob.hp <= 0) { mob.alive = false; droppedItems.push({ x: mob.x, y: mob.y, itemId: 'wood', qty: 2 }); setTimeout(() => { mob.hp = mob.maxHp; mob.alive = true; broadcastZone(); }, 5000); }
-          }
+        if (Math.hypot(mob.x - state.x, mob.y - state.y) <= range) {
+          hit = true; mob.hp -= 20;
+          if (mob.hp <= 0) { mob.alive = false; droppedItems.push({ x: mob.x, y: mob.y, itemId: 'wood', qty: 2 }); setTimeout(() => { mob.hp = mob.maxHp; mob.alive = true; }, 5000); }
         }
       });
       if (hit) broadcastZone();
     });
 
+    socket.on('selectSlot', ({ index }) => { state.activeSlot = index; broadcastZone(); });
+    socket.on('shield', ({ active }) => { if (!state.equipment.shield) return; state.isBlocking = active; broadcastZone(); });
     socket.on('disconnect', () => { const map = zones.get(state.zone); if (map) map.delete(state.id); broadcastZone(); });
     function joinZone(zone, st) { if (!zones.has(zone)) zones.set(zone, new Map()); zones.get(zone).set(st.id, st); socket.join('zone:' + zone); }
     function broadcastZone() { const map = zones.get(state.zone); if (map) io.to('zone:' + state.zone).emit('zoneState', [...map.values()], worldResources, mobs, droppedItems, projectiles); }
   });
-
-  setInterval(() => {
-    let changed = false;
-    for (let i = projectiles.length - 1; i >= 0; i--) {
-      const p = projectiles[i]; p.x += p.dx; p.y += p.dy; p.life--;
-      if (p.life <= 0) { projectiles.splice(i, 1); changed = true; continue; }
-    }
-    if (changed) zones.forEach((map, zone) => io.to('zone:' + zone).emit('zoneState', [...map.values()], worldResources, mobs, droppedItems, projectiles));
-  }, 50);
 }
