@@ -18,27 +18,26 @@
     <div class="h-slot active" data-index="0">🍎</div>
     <div class="h-slot" data-index="1">⚔️</div>
     <div class="h-slot" data-index="2">⛏️</div>
-    <div class="h-slot" data-index="3">🛡️</div>
+    <div class="h-slot" data-index="3">🪓</div>
   </div>
 
   <div id="inventory-btn">🎒</div>
 
-  <!-- Окно инвентаря -->
   <div id="inv-overlay">
     <div id="inv-window">
       <button class="close-btn" id="close-inv">X</button>
+      
       <div class="char-preview">
-        <div class="char-sprite">
-          <div class="char-head"></div>
-          <div class="char-helmet" id="vis-helmet"></div>
-          <div class="char-shield" id="vis-shield"></div>
-        </div>
+        <div class="char-sprite"><div class="char-head"></div></div>
       </div>
       
       <div class="equip-container">
-        <div class="eq-slot" id="eq-helmet" data-slot="helmet">🪖<span>Шлем</span></div>
-        <div class="eq-slot" id="eq-chest" data-slot="chest">🛡️<span>Броня</span></div>
-        <div class="eq-slot" id="eq-shield" data-slot="shield">🛡️<span>Щит</span></div>
+        <div class="eq-slot" data-type="equip" data-slot="helmet">🪖<span>Шлем</span></div>
+        <div class="eq-slot" data-type="equip" data-slot="chest">🛡️<span>Броня</span></div>
+        <div class="eq-slot" data-type="equip" data-slot="legs">👖<span>Штаны</span></div>
+        <div class="eq-slot" data-type="equip" data-slot="boots">👢<span>Ботинки</span></div>
+        <div class="eq-slot" data-type="equip" data-slot="shield" id="eq-shield">🛡️<span>Щит</span></div>
+        <div class="eq-slot" data-type="equip" data-slot="ring">💍<span>Кольцо</span></div>
       </div>
 
       <div class="grid-container" id="inv-grid"></div>
@@ -60,89 +59,94 @@
 
     let myPlayer = { id: -1, x: 40, y: 40, angle: 0, hp: 100, maxHp: 100, activeSlot: 0 };
     let allPlayers = [], allResources = [], allMobs = [], allDrops = [];
-    let invData = { wood: 5, apple: 3, shield_wood: 1 }; 
-    let hotbarData = ['apple', 'sword', 'pickaxe', null];
-    let equipData = { helmet: null, chest: null, shield: 'shield_wood' };
+    let invData = { wood: 5, apple: 3, shield_wood: 1, axe_wood: 1 }; 
+    let hotbarData = ['apple', 'sword', 'pickaxe', 'axe'];
+    let equipData = { helmet: null, chest: null, legs: null, boots: null, shield: null, ring: null };
     let socket = null;
     let isBlocking = false;
+    let attackFlash = 0;
 
-    // Заполняем сетки
+    // Инициализация сеток
     const invGrid = document.getElementById('inv-grid');
     for (let i = 0; i < 16; i++) invGrid.innerHTML += `<div class="i-slot" data-type="inv" data-index="${i}"></div>`;
     const hotbarInv = document.getElementById('hotbar-inv');
     for (let i = 0; i < 4; i++) hotbarInv.innerHTML += `<div class="i-slot" data-type="hotbar" data-index="${i}"></div>`;
 
-    // Обновление UI
+    // Функция получения иконки
+    const getIcon = (id) => id === 'apple' ? '🍎' : id === 'sword' ? '⚔️' : id === 'pickaxe' ? '⛏️' : id === 'axe' ? '🪓' : id === 'shield_wood' ? '🛡️' : id === 'wood' ? '🪵' : '📦';
+
+    // Отрисовка инвентаря
     function renderInv() {
-      // Сетка
       const invSlots = invGrid.querySelectorAll('.i-slot');
-      invSlots.forEach(s => s.innerHTML = '');
+      invSlots.forEach(s => { s.innerHTML = ''; s.dataset.itemId = ''; });
       let idx = 0;
       for (const [key, qty] of Object.entries(invData)) {
         if (qty > 0 && idx < 16) {
-          const icon = key === 'wood' ? '🪵' : key === 'apple' ? '🍎' : '🛡️';
-          invSlots[idx].innerHTML = `<span>${icon}</span><span class="item-count">${qty}</span>`;
+          invSlots[idx].innerHTML = `<span>${getIcon(key)}</span><span class="item-count">${qty}</span>`;
           invSlots[idx].dataset.itemId = key;
           idx++;
         }
       }
-      
-      // Хотбар внутри инвентаря
+
       const hotSlots = hotbarInv.querySelectorAll('.i-slot');
       hotSlots.forEach((s, i) => {
-        s.innerHTML = hotbarData[i] ? (hotbarData[i] === 'apple' ? '🍎' : hotbarData[i] === 'sword' ? '⚔️' : '⛏️') : '';
+        s.innerHTML = hotbarData[i] ? getIcon(hotbarData[i]) : '';
         s.dataset.itemId = hotbarData[i] || '';
+      });
+
+      // Обновляем нижний хотбар
+      document.querySelectorAll('.h-slot').forEach((s, i) => {
+        s.innerHTML = hotbarData[i] ? getIcon(hotbarData[i]) : '';
       });
     }
 
-    // Логика перетаскивания (Touch Events)
-    let dragItem = null;
-    let dragIcon = null;
-    let dragOffsetX = 0, dragOffsetY = 0;
+    // Drag and Drop (Touch)
+    let dragGhost = null;
+    let dragData = null;
 
+    function handleDragStart(e, el) {
+      const itemId = el.dataset.itemId;
+      if (!itemId) return;
+      
+      dragData = { itemId, from: { type: el.dataset.type, index: el.dataset.index, slot: el.dataset.slot } };
+      dragGhost = document.createElement('div');
+      dragGhost.className = 'drag-ghost';
+      dragGhost.innerText = getIcon(itemId);
+      document.body.appendChild(dragGhost);
+      
+      moveGhost(e.touches[0]);
+      e.preventDefault();
+    }
+
+    function moveGhost(touch) {
+      if (dragGhost) {
+        dragGhost.style.left = touch.clientX + 'px';
+        dragGhost.style.top = touch.clientY + 'px';
+      }
+    }
+
+    function handleDragEnd(e) {
+      if (!dragGhost) return;
+      dragGhost.remove();
+      const touch = e.changedTouches[0];
+      const dropTarget = document.elementFromPoint(touch.clientX, touch.clientY).closest('.i-slot, .eq-slot');
+      
+      if (dropTarget && dropTarget.dataset.type) {
+        const to = { type: dropTarget.dataset.type, index: dropTarget.dataset.index, slot: dropTarget.dataset.slot };
+        if (socket) socket.emit('moveItem', { from: dragData.from, to, itemId: dragData.itemId });
+      }
+      dragGhost = null;
+      dragData = null;
+    }
+
+    // Навешиваем события на все слоты (включая экипировку)
     document.querySelectorAll('.i-slot, .eq-slot').forEach(el => {
-      el.addEventListener('touchstart', (e) => {
-        const itemId = el.dataset.itemId || (el.id === 'eq-shield' ? equipData.shield : null);
-        if (!itemId) return;
-        
-        dragItem = { itemId, from: { type: el.dataset.type || 'equip', index: el.dataset.index, slot: el.dataset.slot } };
-        dragIcon = document.createElement('div');
-        dragIcon.innerText = itemId === 'wood' ? '🪵' : itemId === 'apple' ? '🍎' : '🛡️';
-        dragIcon.style.cssText = 'position:fixed;font-size:30px;pointer-events:none;z-index:9999;';
-        document.body.appendChild(dragIcon);
-        
-        const touch = e.touches[0];
-        dragIcon.style.left = touch.clientX - 15 + 'px';
-        dragIcon.style.top = touch.clientY - 15 + 'px';
-        e.preventDefault();
-      }, { passive: false });
-
-      el.addEventListener('touchmove', (e) => {
-        if (!dragIcon) return;
-        const touch = e.touches[0];
-        dragIcon.style.left = touch.clientX - 15 + 'px';
-        dragIcon.style.top = touch.clientY - 15 + 'px';
-        e.preventDefault();
-      }, { passive: false });
-
-      el.addEventListener('touchend', (e) => {
-        if (!dragIcon) return;
-        dragIcon.remove();
-        
-        const touch = e.changedTouches[0];
-        const dropTarget = document.elementFromPoint(touch.clientX, touch.clientY).closest('.i-slot, .eq-slot');
-        
-        if (dropTarget) {
-          const to = { type: dropTarget.dataset.type || 'equip', index: dropTarget.dataset.index, slot: dropTarget.dataset.slot };
-          socket.emit('moveItem', { from: dragItem.from, to, itemId: dragItem.itemId });
-        }
-        
-        dragIcon = null;
-        dragItem = null;
-      });
+      el.addEventListener('touchstart', (e) => handleDragStart(e, el), { passive: false });
+      el.addEventListener('touchmove', (e) => { moveGhost(e.touches[0]); e.preventDefault(); }, { passive: false });
+      el.addEventListener('touchend', handleDragEnd);
     });
 
-    // Открытие/закрытие инвентаря
+    // Открытие/закрытие
     document.getElementById('inventory-btn').addEventListener('click', () => {
       document.getElementById('inv-overlay').classList.add('open');
       renderInv();
@@ -151,7 +155,7 @@
       document.getElementById('inv-overlay').classList.remove('open');
     });
 
-    // Смена слота хотбара
+    // Выбор слота
     document.querySelectorAll('.h-slot').forEach((slot, i) => {
       slot.addEventListener('click', () => {
         document.querySelectorAll('.h-slot').forEach(s => s.classList.remove('active'));
@@ -175,17 +179,19 @@
       socket.on('welcome', ({ state }) => {
         myPlayer.x = state.x; myPlayer.y = state.y;
         invData = state.inv; hotbarData = state.hotbar; equipData = state.equipment;
-        if (equipData.shield) document.getElementById('shield-btn').style.display = 'flex';
         updateUI();
       });
       
-      socket.on('zoneState', (players, res, mobs, drops, projs) => {
+      socket.on('zoneState', (players, res, mobs, drops) => {
         allPlayers = players.filter(p => Number(p.id) !== myPlayer.id);
         allResources = res; allMobs = mobs; allDrops = drops;
       });
       
-      socket.on('updateInv', (inv) => { invData = inv; updateUI(); if (document.getElementById('inv-overlay').classList.contains('open')) renderInv(); });
+      socket.on('updateInv', (inv) => { invData = inv; if (document.getElementById('inv-overlay').classList.contains('open')) renderInv(); });
+      socket.on('updateHotbar', (hb) => { hotbarData = hb; renderInv(); });
+      socket.on('updateEquip', (eq) => { equipData = eq; if (equipData.shield) document.getElementById('shield-btn').style.display = 'flex'; });
       socket.on('updateHp', (hp) => { myPlayer.hp = hp; updateUI(); });
+      socket.on('errorMsg', (msg) => alert(msg));
     });
 
     function updateUI() { document.getElementById('hp-val').innerText = Math.round(myPlayer.hp); }
@@ -193,7 +199,6 @@
     // ДЖОЙСТИКИ
     let moveVec = { x: 0, y: 0 };
     let attackCharge = 0;
-
     function setupJoystick(joyId, knobId, onChange, onRelease) {
       const joy = document.getElementById(joyId); const knob = document.getElementById(knobId);
       let pointerId = null; let center = { x: 0, y: 0 };
@@ -205,7 +210,7 @@
 
     setupJoystick('joy-left', 'knob-left', (x, y) => { moveVec = { x, y }; });
     setupJoystick('joy-right', 'knob-right', (x, y) => { if (x !== 0 || y !== 0) { myPlayer.angle = Math.atan2(y, x); attackCharge = 10; } }, () => {
-      if (attackCharge > 0 && socket) socket.emit('attack', { angle: myPlayer.angle });
+      if (attackCharge > 0 && socket) { socket.emit('attack', { angle: myPlayer.angle }); attackFlash = 10; }
       attackCharge = 0;
     });
 
@@ -220,27 +225,56 @@
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       const cx = canvas.width / 2; const cy = canvas.height / 2; const gridSize = 40;
 
+      // Сетка
       ctx.strokeStyle = '#2a2a2a'; ctx.lineWidth = 1; ctx.beginPath();
       const offsetX = (myPlayer.x * gridSize) % gridSize; const offsetY = (myPlayer.y * gridSize) % gridSize;
       for (let i = -gridSize; i < canvas.width + gridSize; i += gridSize) { ctx.moveTo(i - offsetX, 0); ctx.lineTo(i - offsetX, canvas.height); }
       for (let i = -gridSize; i < canvas.height + gridSize; i += gridSize) { ctx.moveTo(0, i - offsetY); ctx.lineTo(canvas.width, i - offsetY); }
       ctx.stroke();
 
+      // Ресурсы
       allResources.forEach(res => {
         const px = cx + (res.x - myPlayer.x) * gridSize; const py = cy + (res.y - myPlayer.y) * gridSize;
         if (res.type === 'tree') { ctx.fillStyle = '#5c3a21'; ctx.fillRect(px - 6, py - 10, 12, 20); ctx.fillStyle = '#2d6a2e'; ctx.fillRect(px - 15, py - 25, 30, 20); }
         else { ctx.fillStyle = '#7f8c8d'; ctx.fillRect(px - 15, py - 10, 30, 20); }
+        if (res.hp < 100) { ctx.fillStyle = 'red'; ctx.fillRect(px - 15, py - 40, 30, 4); ctx.fillStyle = 'yellow'; ctx.fillRect(px - 15, py - 40, 30 * (res.hp / 100), 4); }
       });
-      allMobs.forEach(mob => { if (!mob.alive) return; const px = cx + (mob.x - myPlayer.x) * gridSize; const py = cy + (mob.y - myPlayer.y) * gridSize; ctx.fillStyle = '#aa44ff'; ctx.beginPath(); ctx.arc(px, py, 18, 0, Math.PI * 2); ctx.fill(); });
-      allDrops.forEach(drop => { const px = cx + (drop.x - myPlayer.x) * gridSize; const py = cy + (drop.y - myPlayer.y) * gridSize; ctx.fillStyle = '#8B4513'; ctx.fillRect(px - 8, py - 8, 16, 16); });
-      
+
+      // Мобы (Сделал нормального слизня с глазами)
+      allMobs.forEach(mob => {
+        if (!mob.alive) return;
+        const px = cx + (mob.x - myPlayer.x) * gridSize; const py = cy + (mob.y - myPlayer.y) * gridSize;
+        ctx.fillStyle = '#9b59b6'; ctx.beginPath(); ctx.ellipse(px, py, 18, 14, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(px - 6, py - 4, 4, 0, Math.PI * 2); ctx.arc(px + 6, py - 4, 4, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(px - 6, py - 4, 2, 0, Math.PI * 2); ctx.arc(px + 6, py - 4, 2, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = 'red'; ctx.fillRect(px - 20, py - 30, 40, 6); ctx.fillStyle = 'lime'; ctx.fillRect(px - 20, py - 30, 40 * (mob.hp / mob.maxHp), 6);
+      });
+
+      // Дроп
+      allDrops.forEach(drop => {
+        const px = cx + (drop.x - myPlayer.x) * gridSize; const py = cy + (drop.y - myPlayer.y) * gridSize;
+        ctx.fillStyle = drop.itemId === 'wood' ? '#8B4513' : '#7f8c8d'; ctx.fillRect(px - 8, py - 8, 16, 16);
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.strokeRect(px - 8, py - 8, 16, 16);
+      });
+
+      // Персонаж
       ctx.fillStyle = '#3498db'; ctx.fillRect(cx - 10, cy - 10, 20, 20);
       ctx.fillStyle = '#f1c40f'; ctx.fillRect(cx - 6, cy - 20, 12, 12);
       ctx.strokeStyle = 'white'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(myPlayer.angle) * 30, cy + Math.sin(myPlayer.angle) * 30); ctx.stroke();
 
+      // Вспышка удара
+      if (attackFlash > 0) {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+        ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, 2.5 * gridSize, myPlayer.angle - 0.6, myPlayer.angle + 0.6); ctx.closePath(); ctx.fill();
+        attackFlash--;
+      }
+
+      // Щит (синяя дуга)
       if (isBlocking && equipData.shield) {
         ctx.strokeStyle = '#0096ff'; ctx.lineWidth = 6;
         ctx.beginPath(); ctx.arc(cx, cy, 28, myPlayer.angle - 1.74, myPlayer.angle + 1.74); ctx.stroke();
+        ctx.fillStyle = 'rgba(0, 150, 255, 0.2)';
+        ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, 28, myPlayer.angle - 1.74, myPlayer.angle + 1.74); ctx.fill();
       }
 
       requestAnimationFrame(loop);
