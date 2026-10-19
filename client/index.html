@@ -10,54 +10,42 @@
 </head>
 <body>
   <div id="hud">HP: <span id="hp-val">100</span>/100</div>
-  
-  <!-- Джойстики -->
   <div id="joy-left" class="joy"><div class="knob" id="knob-left"></div></div>
   <div id="joy-right" class="joy"><div class="knob" id="knob-right"></div></div>
-  
-  <!-- Кнопка блока (появляется при надевании щита) -->
   <div id="shield-btn">БЛОК</div>
 
-  <!-- Хотбар (внизу) -->
+  <!-- Нижний Хотбар -->
   <div id="hotbar">
-    <div class="hotbar-slot active" data-type="food">Еда</div>
-    <div class="hotbar-slot" data-type="weapon">Меч</div>
-    <div class="hotbar-slot" data-type="tool">Кирка</div>
-    <div class="hotbar-slot" data-type="shield">Щит</div>
+    <div class="h-slot active" data-index="0">🍎</div>
+    <div class="h-slot" data-index="1">⚔️</div>
+    <div class="h-slot" data-index="2">⛏️</div>
+    <div class="h-slot" data-index="3">🛡️</div>
   </div>
 
-  <!-- Кнопка открытия инвентаря -->
   <div id="inventory-btn">🎒</div>
 
   <!-- Окно инвентаря -->
-  <div id="inventory-panel">
-    <!-- 1. Персонаж -->
-    <div class="char-preview">
-      <div class="char-body">
-        <div class="char-head"></div>
+  <div id="inv-overlay">
+    <div id="inv-window">
+      <h3 class="inv-title">Инвентарь</h3>
+      
+      <!-- Слоты экипировки -->
+      <div class="equip-container">
+        <div class="eq-slot" id="eq-helmet">🪖</div>
+        <div class="eq-slot" id="eq-chest">🛡️</div>
+        <div class="eq-slot" id="eq-shield">🛡️</div>
+      </div>
+
+      <!-- Сетка 4х4 -->
+      <div class="grid-container" id="inv-grid">
+        <!-- Заполнится через JS -->
+      </div>
+
+      <!-- Дубликат Хотбара внутри инвентаря -->
+      <div class="hotbar-in-inv" id="hotbar-inv">
+        <!-- Заполнится через JS -->
       </div>
     </div>
-
-    <!-- 2. Экипировка -->
-    <div class="equip-row">
-      <div class="equip-slot" data-type="helmet"><span>🪖</span>Шлем</div>
-      <div class="equip-slot" data-type="chest"><span>🛡️</span>Броня</div>
-      <div class="equip-slot" data-type="legs"><span>👖</span>Штаны</div>
-      <div class="equip-slot" data-type="boots"><span>👢</span>Ботинки</div>
-      <div class="equip-slot" id="slot-shield" data-type="shield"><span>🛡️</span>Щит</div>
-      <div class="equip-slot" data-type="ring"><span>💍</span>Кольцо</div>
-    </div>
-
-    <!-- 3. Разделитель -->
-    <div class="divider"></div>
-
-    <!-- 4. Сетка 16 слотов (Инвентарь) -->
-    <div class="inv-grid" id="inv-grid">
-      <!-- Заполняется через JS -->
-    </div>
-    
-    <!-- (Хотбар в инвентаре мы делаем общим с нижним хотбаром, чтобы вещи перетаскивались, 
-         но визуально он находится внизу, как вы и просили) -->
   </div>
 
   <canvas id="game"></canvas>
@@ -72,54 +60,86 @@
     function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
     window.addEventListener('resize', resize); resize();
 
-    let myPlayer = { id: -1, x: 40, y: 40, angle: 0, hp: 100, maxHp: 100, weapon: 'sword' };
+    let myPlayer = { id: -1, x: 40, y: 40, angle: 0, hp: 100, maxHp: 100, activeSlot: 0 };
     let allPlayers = [], allResources = [], allMobs = [], allDrops = [], allProjectiles = [];
-    // Тестовый инвентарь
     let inventory = { wood: 5, apple: 3, shield_wood: 1 }; 
     let socket = null;
-    let attackCharge = 0;
     let isBlocking = false;
-    let equippedShield = null;
 
-    // Инициализация сетки инвентаря
+    // Отрисовка сеток
     const invGrid = document.getElementById('inv-grid');
-    for (let i = 0; i < 16; i++) {
-      const slot = document.createElement('div');
-      slot.className = 'inv-slot';
-      invGrid.appendChild(slot);
+    for (let i = 0; i < 16; i++) invGrid.innerHTML += `<div class="i-slot"></div>`;
+    const hotbarInv = document.getElementById('hotbar-inv');
+    for (let i = 0; i < 4; i++) hotbarInv.innerHTML += `<div class="i-slot"></div>`;
+
+    // Логика перетаскивания (Drag and Drop)
+    let draggedItem = null;
+
+    function makeDraggable(element, itemId) {
+      element.draggable = true;
+      element.ondragstart = (e) => { draggedItem = itemId; e.dataTransfer.effectAllowed = 'move'; };
+      element.ondragover = (e) => e.preventDefault();
+      element.ondrop = (e) => {
+        e.preventDefault();
+        if (draggedItem) {
+          // Если перетащили в слот экипировки
+          if (element.id.startsWith('eq-')) {
+            const type = element.id.replace('eq-', '');
+            socket.emit('equipItem', { slot: type, itemId: draggedItem });
+            inventory[draggedItem] -= 1; // Убираем из инвентаря
+          }
+        }
+        draggedItem = null;
+      };
     }
 
-    // Отрисовка предметов в инвентаре
-    function renderInventory() {
-      const slots = document.querySelectorAll('.inv-slot');
-      slots.forEach((s, i) => s.innerHTML = '');
-      
-      if (inventory.wood > 0) {
-        slots[0].innerHTML = `<span style="color:#8B4513">🪵</span><span class="item-count">${inventory.wood}</span>`;
-      }
-      if (inventory.apple > 0) {
-        slots[1].innerHTML = `<span style="color:#ff0000">🍎</span><span class="item-count">${inventory.apple}</span>`;
-      }
-      if (inventory.shield_wood > 0) {
-        slots[2].innerHTML = `<span style="color:#0096ff">🛡️</span><span class="item-count">${inventory.shield_wood}</span>`;
-      }
-    }
-
-    // Открытие/закрытие инвентаря
+    // Открытие инвентаря
     document.getElementById('inventory-btn').addEventListener('click', () => {
-      const panel = document.getElementById('inventory-panel');
-      panel.classList.toggle('open');
-      if (panel.classList.contains('open')) renderInventory();
+      document.getElementById('inv-overlay').classList.toggle('open');
+      renderInventory();
     });
 
-    // Экипировка щита
-    document.getElementById('slot-shield').addEventListener('click', () => {
-      if (inventory.shield_wood > 0 && !equippedShield) {
-        equippedShield = 'shield_wood';
-        document.getElementById('slot-shield').innerHTML = '<span>🛡️</span>Надет';
-        document.getElementById('shield-btn').style.display = 'flex';
-        socket.emit('equipShield', { itemId: 'shield_wood' });
+    // Отрисовка предметов
+    function renderInventory() {
+      const slots = document.querySelectorAll('.i-slot');
+      slots.forEach(s => s.innerHTML = '');
+      
+      // Выводим дерево
+      if (inventory.wood > 0) {
+        slots[0].innerHTML = `<span>🪵</span><span class="item-count">${inventory.wood}</span>`;
+        makeDraggable(slots[0], 'wood');
       }
+      // Выводим еду
+      if (inventory.apple > 0) {
+        slots[1].innerHTML = `<span>🍎</span><span class="item-count">${inventory.apple}</span>`;
+        makeDraggable(slots[1], 'apple');
+      }
+      // Выводим щит
+      if (inventory.shield_wood > 0) {
+        slots[2].innerHTML = `<span>🛡️</span><span class="item-count">${inventory.shield_wood}</span>`;
+        makeDraggable(slots[2], 'shield_wood');
+      }
+    }
+
+    // Экипировка щита (через drag and drop)
+    document.getElementById('eq-shield').ondragover = (e) => e.preventDefault();
+    document.getElementById('eq-shield').ondrop = (e) => {
+      e.preventDefault();
+      if (draggedItem === 'shield_wood') {
+        socket.emit('equipItem', { slot: 'shield', itemId: 'shield_wood' });
+        document.getElementById('shield-btn').style.display = 'flex';
+        document.getElementById('eq-shield').style.borderColor = '#00ff00';
+      }
+    };
+
+    // Смена слота хотбара
+    document.querySelectorAll('.h-slot').forEach((slot, i) => {
+      slot.addEventListener('click', () => {
+        document.querySelectorAll('.h-slot').forEach(s => s.classList.remove('active'));
+        slot.classList.add('active');
+        myPlayer.activeSlot = i;
+        if (socket) socket.emit('selectSlot', { slot: i });
+      });
     });
 
     // СЕТЬ
@@ -133,12 +153,12 @@
       myPlayer.id = Number(player.id);
       socket = io({ auth: { playerId: myPlayer.id } });
       
-      socket.on('welcome', ({ state }) => { myPlayer.x = state.x; myPlayer.y = state.y; if(state.inv) inventory = state.inv; updateUI(); });
+      socket.on('welcome', ({ state }) => { myPlayer.x = state.x; myPlayer.y = state.y; updateUI(); });
       socket.on('zoneState', (players, res, mobs, drops, projs) => {
         allPlayers = players.filter(p => Number(p.id) !== myPlayer.id);
         allResources = res; allMobs = mobs; allDrops = drops; allProjectiles = projs;
       });
-      socket.on('updateInv', (inv) => { inventory = inv; updateUI(); if (document.getElementById('inventory-panel').classList.contains('open')) renderInventory(); });
+      socket.on('updateInv', (inv) => { inventory = inv; updateUI(); if (document.getElementById('inv-overlay').classList.contains('open')) renderInventory(); });
       socket.on('updateHp', (hp) => { myPlayer.hp = hp; updateUI(); });
     });
 
@@ -146,6 +166,8 @@
 
     // ДЖОЙСТИКИ
     let moveVec = { x: 0, y: 0 };
+    let attackCharge = 0;
+
     function setupJoystick(joyId, knobId, onChange, onRelease) {
       const joy = document.getElementById(joyId); const knob = document.getElementById(knobId);
       let pointerId = null; let center = { x: 0, y: 0 };
@@ -195,11 +217,9 @@
       ctx.strokeStyle = 'white'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(myPlayer.angle) * 30, cy + Math.sin(myPlayer.angle) * 30); ctx.stroke();
 
       // Щит (Синяя дуга)
-      if (isBlocking && equippedShield) {
+      if (isBlocking && document.getElementById('shield-btn').style.display === 'flex') {
         ctx.strokeStyle = '#0096ff'; ctx.lineWidth = 6;
         ctx.beginPath(); ctx.arc(cx, cy, 28, myPlayer.angle - 1.74, myPlayer.angle + 1.74); ctx.stroke();
-        ctx.fillStyle = 'rgba(0, 150, 255, 0.2)';
-        ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, 28, myPlayer.angle - 1.74, myPlayer.angle + 1.74); ctx.fill();
       }
 
       requestAnimationFrame(loop);
