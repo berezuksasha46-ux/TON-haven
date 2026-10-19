@@ -6,20 +6,21 @@ window.equipData = {};
 const getIcon = (id) => id === 'apple' ? '🍎' : id === 'sword' ? '⚔️' : id === 'pickaxe' ? '⛏️' : id === 'axe' ? '🪓' : id === 'shield_wood' ? '🛡️' : id === 'wood' ? '🪵' : '📦';
 
 document.addEventListener("DOMContentLoaded", () => {
-  // Создаем сетки
   const invGrid = document.getElementById('inv-grid');
-  for (let i = 0; i < 16; i++) invGrid.innerHTML += `<div class="i-slot" data-type="inv" data-index="${i}"></div>`;
+  if (invGrid) {
+    for (let i = 0; i < 16; i++) invGrid.innerHTML += `<div class="i-slot" data-type="inv" data-index="${i}"></div>`;
+  }
   
   const hotbarInv = document.getElementById('hotbar-inv');
-  for (let i = 0; i < 4; i++) hotbarInv.innerHTML += `<div class="i-slot" data-type="hotbar" data-index="${i}"></div>`;
+  if (hotbarInv) {
+    for (let i = 0; i < 4; i++) hotbarInv.innerHTML += `<div class="i-slot" data-type="hotbar" data-index="${i}"></div>`;
+  }
   
-  // Инициализация событий
   initDragAndDrop();
   renderUI();
 });
 
 function renderUI() {
-  // Отрисовка сетки инвентаря
   const invSlots = document.querySelectorAll('#inv-grid .i-slot');
   invSlots.forEach(s => { s.innerHTML = ''; s.dataset.itemId = ''; });
   let idx = 0;
@@ -31,25 +32,22 @@ function renderUI() {
     }
   }
 
-  // Отрисовка хотбара в инвентаре
   const hotSlots = document.querySelectorAll('#hotbar-inv .i-slot');
   hotSlots.forEach((s, i) => {
     s.innerHTML = window.hotbarData[i] ? getIcon(window.hotbarData[i]) : '';
     s.dataset.itemId = window.hotbarData[i] || '';
   });
 
-  // Отрисовка нижнего хотбара
   document.querySelectorAll('.h-slot').forEach((s, i) => {
     s.innerHTML = window.hotbarData[i] ? getIcon(window.hotbarData[i]) : '';
   });
 
-  // Отрисовка экипировки
   Object.keys(window.equipData).forEach(slot => {
     const el = document.querySelector(`.eq-slot[data-slot="${slot}"]`);
     if(el) {
       if (window.equipData[slot]) {
         el.style.borderColor = '#00ff00';
-        el.innerHTML = getIcon(window.equipData[slot]); // Показываем иконку надетого
+        el.innerHTML = getIcon(window.equipData[slot]);
       } else {
         el.style.borderColor = '#333';
         el.innerHTML = slot === 'helmet' ? '🪖' : slot === 'chest' ? '🥋' : '🛡️';
@@ -58,20 +56,15 @@ function renderUI() {
   });
 }
 
-// --- DRAG AND DROP (Работает на телефоне и ПК) ---
 let draggedItem = null;
 let dragGhost = null;
 
 function initDragAndDrop() {
   const interactables = document.querySelectorAll('.i-slot, .eq-slot');
-  
   interactables.forEach(el => {
-    // Для телефонов (Touch)
     el.addEventListener('touchstart', (e) => startDrag(e, el), { passive: false });
     el.addEventListener('touchmove', (e) => moveDrag(e), { passive: false });
     el.addEventListener('touchend', (e) => endDrag(e));
-    
-    // Для ПК (Мышь) - для удобства разработки
     el.addEventListener('mousedown', (e) => startDrag(e, el));
   });
 }
@@ -80,11 +73,7 @@ function startDrag(e, el) {
   const itemId = el.dataset.itemId || (el.dataset.type === 'equip' ? window.equipData[el.dataset.slot] : null);
   if (!itemId) return;
 
-  draggedItem = { 
-    itemId, 
-    from: { type: el.dataset.type, index: el.dataset.index, slot: el.dataset.slot } 
-  };
-
+  draggedItem = { itemId, from: { type: el.dataset.type, index: el.dataset.index, slot: el.dataset.slot } };
   dragGhost = document.createElement('div');
   dragGhost.className = 'drag-ghost';
   dragGhost.innerText = getIcon(itemId);
@@ -94,7 +83,6 @@ function startDrag(e, el) {
   const clientY = e.touches ? e.touches[0].clientY : e.clientY;
   dragGhost.style.left = clientX + 'px';
   dragGhost.style.top = clientY + 'px';
-  
   e.preventDefault();
 }
 
@@ -109,43 +97,29 @@ function moveDrag(e) {
 
 function endDrag(e) {
   if (!dragGhost || !draggedItem) return;
-
   const clientX = e.changedTouches ? e.changedTouches[0].clientX : e.clientX;
   const clientY = e.changedTouches ? e.changedTouches[0].clientY : e.clientY;
-  
   dragGhost.remove();
   dragGhost = null;
 
   const dropTarget = document.elementFromPoint(clientX, clientY).closest('.i-slot, .eq-slot');
   
+  // ИСПРАВЛЕНО: Отправляем через GameState.socket
   if (dropTarget && window.GameState && window.GameState.socket) {
-    const to = { 
-      type: dropTarget.dataset.type, 
-      index: dropTarget.dataset.index, 
-      slot: dropTarget.dataset.slot 
-    };
-    
-    // Отправляем на сервер, чтобы он сохранил
-    window.GameState.socket.emit('moveItem', { 
-      from: draggedItem.from, 
-      to, 
-      itemId: draggedItem.itemId 
-    });
+    const to = { type: dropTarget.dataset.type, index: dropTarget.dataset.index, slot: dropTarget.dataset.slot };
+    window.GameState.socket.emit('moveItem', { from: draggedItem.from, to, itemId: draggedItem.itemId });
   }
-  
   draggedItem = null;
 }
 
-// Кнопки открытия/закрытия
-document.getElementById('inventory-btn').addEventListener('click', () => {
-  document.getElementById('inv-overlay').classList.add('open');
+document.getElementById('inventory-btn')?.addEventListener('click', () => {
+  document.getElementById('inv-overlay')?.classList.add('open');
   renderUI();
 });
-document.getElementById('close-inv').addEventListener('click', () => {
-  document.getElementById('inv-overlay').classList.remove('open');
+document.getElementById('close-inv')?.addEventListener('click', () => {
+  document.getElementById('inv-overlay')?.classList.remove('open');
 });
 
-// Обновление UI при получении данных с сервера
 window.updateUIFromServer = function(inv, hotbar, equip) {
   window.invData = inv;
   window.hotbarData = hotbar;
