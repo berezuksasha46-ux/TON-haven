@@ -2,7 +2,7 @@ body { margin: 0; padding: 0; overflow: hidden; background: #1a1a1a; font-family
 canvas { display: block; width: 100vw; height: 100vh; image-rendering: pixelated; }
 #hud { position: fixed; top: 10px; left: 10px; color: white; font-size: 16px; font-weight: bold; text-shadow: 2px 2px 0 #000; z-index: 10; }
 
-.joy { position: fixed; bottom: 90px; width: 120px; height: 120px; border-radius: 50%; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.3); z-index: 10; touch-action: none; }
+.joy { position: fixed; bottom: 100px; width: 120px; height: 120px; border-radius: 50%; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.3); z-index: 10; touch-action: none; }
 #joy-left { left: 20px; } #joy-right { right: 20px; background: rgba(255,0,0,0.1); border-color: rgba(255,0,0,0.3); }
 .knob { position: absolute; top: 35px; left: 35px; width: 50px; height: 50px; border-radius: 50%; background: rgba(255,255,255,0.6); pointer-events: none; }
 
@@ -11,25 +11,25 @@ canvas { display: block; width: 100vw; height: 100vh; image-rendering: pixelated
 .h-slot.active { border-color: #ffcc00; background: rgba(255,204,0,0.2); }
 
 #inventory-btn { position: fixed; bottom: 20px; right: 20px; width: 55px; height: 55px; background: rgba(0,0,0,0.7); border: 2px solid #666; border-radius: 8px; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 28px; z-index: 20; cursor: pointer; }
-#shield-btn { position: fixed; bottom: 220px; right: 20px; width: 60px; height: 60px; border-radius: 50%; background: rgba(0, 150, 255, 0.6); border: 3px solid #0096ff; color: white; font-weight: bold; font-size: 12px; display: none; align-items: center; justify-content: center; z-index: 10; touch-action: none; }
+#shield-btn { position: fixed; bottom: 230px; right: 20px; width: 60px; height: 60px; border-radius: 50%; background: rgba(0, 150, 255, 0.6); border: 3px solid #0096ff; color: white; font-weight: bold; font-size: 12px; display: none; align-items: center; justify-content: center; z-index: 10; touch-action: none; }
 
 #inv-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.7); display: none; z-index: 100; align-items: center; justify-content: center; }
 #inv-overlay.open { display: flex; }
-#inv-window { width: 340px; background: #222; border: 3px solid #555; border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 10px; position: relative; }
-.close-btn { position: absolute; top: 5px; right: 5px; width: 30px; height: 30px; background: #cc3333; color: white; border: none; border-radius: 4px; font-weight: bold; font-size: 16px; cursor: pointer; z-index: 10; }
+#inv-window { width: 360px; background: #222; border: 3px solid #555; border-radius: 10px; padding: 15px; display: flex; flex-direction: column; gap: 15px; position: relative; }
+.close-btn { position: absolute; top: 10px; right: 10px; width: 30px; height: 30px; background: #cc3333; color: white; border: none; border-radius: 4px; font-weight: bold; font-size: 16px; cursor: pointer; z-index: 10; }
 
-.char-preview { height: 80px; display: flex; justify-content: center; align-items: flex-end; background: #1a1a1a; border-radius: 8px; padding: 5px; }
+.char-preview { height: 90px; display: flex; justify-content: center; align-items: flex-end; background: #1a1a1a; border-radius: 8px; padding: 10px; margin-top: 20px; }
 .char-sprite { width: 30px; height: 40px; background: #3498db; position: relative; border-radius: 4px; }
 .char-head { width: 24px; height: 24px; background: #f1c40f; position: absolute; top: -24px; left: 3px; border-radius: 50%; }
 
-.equip-container { display: flex; justify-content: center; gap: 6px; flex-wrap: wrap; }
+.equip-container { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
 .eq-slot { width: 45px; height: 45px; background: #1a1a1a; border: 2px solid #444; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 18px; color: #fff; position: relative; }
 .eq-slot span { font-size: 9px; position: absolute; bottom: 1px; }
 
-.grid-container { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; background: #1a1a1a; padding: 10px; border-radius: 8px; }
-.i-slot { width: 50px; height: 50px; background: #333; border: 2px solid #444; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 20px; position: relative; touch-action: none; }
+.grid-container { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; background: #1a1a1a; padding: 10px; border-radius: 8px; }
+.i-slot { width: 60px; height: 60px; background: #333; border: 2px solid #444; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 24px; position: relative; touch-action: none; }
+.item-count { position: absolute; bottom: 2px; right: 4px; font-size: 12px; font-weight: bold; color: #fff; }
 
-.hotbar-in-inv { display: flex; justify-content: center; gap: 6px; margin-top: 5px; }
+.hotbar-in-inv { display: flex; justify-content: center; gap: 8px; margin-top: 5px; }
 
-/* Стиль для перетаскиваемого предмета */
-.drag-ghost { position: fixed; font-size: 35px; pointer-events: none; z-index: 9999; transform: translate(-50%, -50%); }
+.drag-ghost { position: fixed; font-size: 40px; pointer-events: none; z-index: 9999; transform: translate(-50%, -50%); opacity: 0.8; }
