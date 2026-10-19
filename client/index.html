@@ -6,55 +6,94 @@
   <title>TON Haven</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="/socket.io/socket.io.js"></script>
-  <style>
-    body { margin: 0; padding: 0; overflow: hidden; background: #1a1a1a; font-family: 'Courier New', monospace; -webkit-user-select: none; user-select: none; }
-    canvas { display: block; width: 100vw; height: 100vh; image-rendering: pixelated; }
-    #hud { position: fixed; top: 10px; left: 10px; color: white; font-size: 16px; font-weight: bold; text-shadow: 2px 2px 0 #000; z-index: 10; }
-    #inventory { position: fixed; top: 10px; right: 10px; background: rgba(0,0,0,0.7); padding: 8px; border-radius: 4px; color: #fff; font-size: 14px; z-index: 10; border: 2px solid #555; }
-    .joy { position: fixed; bottom: 30px; width: 110px; height: 110px; border-radius: 50%; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.3); z-index: 10; touch-action: none; }
-    #joy-left { left: 20px; } #joy-right { right: 20px; background: rgba(255,0,0,0.1); border-color: rgba(255,0,0,0.3); }
-    .knob { position: absolute; top: 30px; left: 30px; width: 50px; height: 50px; border-radius: 50%; background: rgba(255,255,255,0.6); pointer-events: none; }
-    #hotbar { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; z-index: 10; }
-    .slot { width: 45px; height: 45px; background: rgba(0,0,0,0.7); border: 2px solid #666; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 10px; touch-action: none; text-align: center; }
-    .slot.active { border-color: #ffcc00; background: rgba(255,204,0,0.2); }
-    #action-btn { position: fixed; bottom: 160px; right: 40px; width: 80px; height: 80px; border-radius: 50%; background: rgba(0, 150, 255, 0.7); border: 3px solid #0096ff; color: white; font-weight: bold; font-size: 14px; display: flex; align-items: center; justify-content: center; z-index: 10; touch-action: none; text-shadow: 1px 1px 0 #000; }
-    #action-btn:active { background: rgba(0, 150, 255, 1); }
-  </style>
+  <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
   <div id="hud">HP: <span id="hp-val">100</span>/100</div>
-  <div id="inventory">Wood: <span id="wood-val">0</span></div>
+  <div id="inventory-btn">🎒</div>
+  
   <div id="joy-left" class="joy"><div class="knob" id="knob-left"></div></div>
   <div id="joy-right" class="joy"><div class="knob" id="knob-right"></div></div>
-  
-  <div id="hotbar">
-    <div class="slot" data-tool="apple">Еда</div>
-    <div class="slot active" data-tool="hand">Рука</div>
-    <div class="slot" data-tool="axe">Топор</div>
-    <div class="slot" data-tool="pickaxe">Кирка</div>
-    <div class="slot" data-tool="sword">Меч</div>
-    <div class="slot" data-tool="bow">Лук</div>
-    <div class="slot" data-tool="staff">Посох</div>
+  <div id="shield-btn">БЛОК</div>
+
+  <div id="inventory-panel">
+    <div class="inv-left">
+      <h3 style="color:white; margin:0 0 10px 0;">Экипировка</h3>
+      <div class="equip-slot" data-type="helmet">Шлем</div>
+      <div class="equip-slot" data-type="chest">Нагрудник</div>
+      <div class="equip-slot" data-type="legs">Штаны</div>
+      <div class="equip-slot" data-type="boots">Ботинки</div>
+      <div class="equip-slot" id="slot-shield" data-type="shield">Щит</div>
+    </div>
+    <div class="inv-right" id="inv-grid">
+      <!-- Сетка 4х4 будет создана через JS -->
+    </div>
   </div>
 
-  <div id="action-btn">Ударить</div>
   <canvas id="game"></canvas>
 
   <script>
     window.onerror = function() { return true; }; 
     const tg = window.Telegram?.WebApp;
     if (tg) { tg.ready(); tg.expand(); }
+
+    // --- ЗАГРУЗКА ИГРЫ ---
     const canvas = document.getElementById('game');
     const ctx = canvas.getContext('2d');
     function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
     window.addEventListener('resize', resize); resize();
 
-    let myPlayer = { id: -1, x: 40, y: 40, angle: 0, hp: 100, maxHp: 100, tool: 'hand' };
+    let myPlayer = { id: -1, x: 40, y: 40, angle: 0, hp: 100, maxHp: 100, weapon: 'sword' };
     let allPlayers = [], allResources = [], allMobs = [], allDrops = [], allProjectiles = [];
-    let inventory = { wood: 0, apple: 5 };
+    let inventory = { wood: 0, apple: 5, shield_wood: 1 }; // Дадим тестовый щит
     let socket = null;
-    let effects = []; // Для визуальных эффектов (вспышки, взрывы)
+    let attackCharge = 0;
+    let isBlocking = false;
+    let equippedShield = null;
 
+    // Инициализация сетки инвентаря
+    const invGrid = document.getElementById('inv-grid');
+    for (let i = 0; i < 16; i++) {
+      const slot = document.createElement('div');
+      slot.className = 'inv-slot';
+      invGrid.appendChild(slot);
+    }
+    function renderInventory() {
+      const slots = document.querySelectorAll('.inv-slot');
+      slots.forEach((s, i) => s.innerHTML = '');
+      
+      // Выводим дерево
+      if (inventory.wood > 0) {
+        slots[0].innerHTML = `<span>Wood</span><span class="item-count">${inventory.wood}</span>`;
+      }
+      // Выводим еду
+      if (inventory.apple > 0) {
+        slots[1].innerHTML = `<span>Apple</span><span class="item-count">${inventory.apple}</span>`;
+      }
+      // Выводим щит
+      if (inventory.shield_wood > 0) {
+        slots[2].innerHTML = `<span>Щит</span><span class="item-count">${inventory.shield_wood}</span>`;
+      }
+    }
+
+    // Клик по слоту щита в инвентаре
+    document.getElementById('slot-shield').addEventListener('click', () => {
+      if (inventory.shield_wood > 0) {
+        equippedShield = 'shield_wood';
+        document.getElementById('slot-shield').innerText = 'Щит (Надет)';
+        document.getElementById('shield-btn').style.display = 'flex'; // Показываем кнопку блока
+        socket.emit('equipShield', { itemId: 'shield_wood' });
+      }
+    });
+
+    // Открытие/закрытие инвентаря
+    document.getElementById('inventory-btn').addEventListener('click', () => {
+      const panel = document.getElementById('inventory-panel');
+      panel.classList.toggle('open');
+      if (panel.classList.contains('open')) renderInventory();
+    });
+
+    // СЕТЬ
     fetch('/api/auth', {
       method: 'POST', headers: {'Content-Type':'application/json'},
       body: JSON.stringify({ initData: tg?.initData || '', devTgId: tg ? null : Date.now() % 100000 })
@@ -65,153 +104,79 @@
       myPlayer.id = Number(player.id);
       socket = io({ auth: { playerId: myPlayer.id } });
       
-      socket.on('welcome', ({ state }) => {
-        myPlayer.x = state.x; myPlayer.y = state.y; inventory = state.inv; updateUI();
-      });
+      socket.on('welcome', ({ state }) => { myPlayer.x = state.x; myPlayer.y = state.y; inventory = state.inv; updateUI(); });
 
       socket.on('zoneState', (players, res, mobs, drops, projs) => {
         allPlayers = players.filter(p => Number(p.id) !== myPlayer.id);
         allResources = res; allMobs = mobs; allDrops = drops; allProjectiles = projs;
       });
 
-      socket.on('updateInv', (inv) => { inventory = inv; updateUI(); });
+      socket.on('updateInv', (inv) => { inventory = inv; updateUI(); if (document.getElementById('inventory-panel').classList.contains('open')) renderInventory(); });
       socket.on('updateHp', (hp) => { myPlayer.hp = hp; updateUI(); });
-      socket.on('errorMsg', (msg) => { alert(msg); });
     });
 
-    function updateUI() {
-      document.getElementById('wood-val').innerText = inventory.wood || 0;
-      document.getElementById('hp-val').innerText = Math.round(myPlayer.hp);
-    }
+    function updateUI() { document.getElementById('hp-val').innerText = Math.round(myPlayer.hp); }
 
+    // ДЖОЙСТИКИ (ТЗ: Левый ходит, правый целится/бьет)
     let moveVec = { x: 0, y: 0 };
-    let lastMoveSent = 0;
-
-    function setupJoystick(joyId, knobId, onChange) {
+    function setupJoystick(joyId, knobId, onChange, onRelease) {
       const joy = document.getElementById(joyId); const knob = document.getElementById(knobId);
       let pointerId = null; let center = { x: 0, y: 0 };
-      joy.addEventListener('pointerdown', (e) => {
-        pointerId = e.pointerId; joy.setPointerCapture(e.pointerId);
-        const rect = joy.getBoundingClientRect(); center = { x: rect.left + rect.width/2, y: rect.top + rect.height/2 };
-        handleMove(e);
-      });
+      joy.addEventListener('pointerdown', (e) => { pointerId = e.pointerId; joy.setPointerCapture(e.pointerId); const rect = joy.getBoundingClientRect(); center = { x: rect.left + rect.width/2, y: rect.top + rect.height/2 }; handleMove(e); });
       joy.addEventListener('pointermove', (e) => { if (e.pointerId === pointerId) handleMove(e); });
-      joy.addEventListener('pointerup', (e) => { if (e.pointerId === pointerId) { pointerId = null; knob.style.transform = `translate(0px, 0px)`; onChange(0, 0); } });
-      function handleMove(e) {
-        let dx = e.clientX - center.x; let dy = e.clientY - center.y;
-        const dist = Math.hypot(dx, dy); const maxDist = 35;
-        if (dist > maxDist) { dx = (dx/dist)*maxDist; dy = (dy/dist)*maxDist; }
-        knob.style.transform = `translate(${dx}px, ${dy}px)`; onChange(dx/maxDist, dy/maxDist);
-      }
+      joy.addEventListener('pointerup', (e) => { if (e.pointerId === pointerId) { pointerId = null; knob.style.transform = `translate(0px, 0px)`; if (onRelease) onRelease(); onChange(0, 0); } });
+      function handleMove(e) { let dx = e.clientX - center.x; let dy = e.clientY - center.y; const dist = Math.hypot(dx, dy); const maxDist = 35; if (dist > maxDist) { dx = (dx/dist)*maxDist; dy = (dy/dist)*maxDist; } knob.style.transform = `translate(${dx}px, ${dy}px)`; onChange(dx/maxDist, dy/maxDist); }
     }
 
     setupJoystick('joy-left', 'knob-left', (x, y) => { moveVec = { x, y }; });
-    setupJoystick('joy-right', 'knob-right', (x, y) => { if (x !== 0 || y !== 0) myPlayer.angle = Math.atan2(y, x); });
-
-    document.querySelectorAll('.slot').forEach(slot => {
-      slot.addEventListener('pointerdown', (e) => {
-        e.preventDefault(); document.querySelectorAll('.slot').forEach(s => s.classList.remove('active')); slot.classList.add('active');
-        myPlayer.tool = slot.getAttribute('data-tool');
-        const btn = document.getElementById('action-btn');
-        if (myPlayer.tool === 'apple') btn.innerText = 'Съесть';
-        else if (myPlayer.tool === 'hand') btn.innerText = 'Ударить';
-        else if (myPlayer.tool === 'axe' || myPlayer.tool === 'pickaxe') btn.innerText = 'Добыть';
-        else if (myPlayer.tool === 'sword') btn.innerText = 'Удар';
-        else if (myPlayer.tool === 'bow') btn.innerText = 'Выстрел';
-        else if (myPlayer.tool === 'staff') btn.innerText = 'Магия';
-        if (socket) socket.emit('equip', { toolId: myPlayer.tool });
-      });
+    setupJoystick('joy-right', 'knob-right', (x, y) => { if (x !== 0 || y !== 0) { myPlayer.angle = Math.atan2(y, x); attackCharge = 10; } }, () => {
+      if (attackCharge > 0 && socket) socket.emit('attack', { angle: myPlayer.angle });
+      attackCharge = 0;
     });
 
-    document.getElementById('action-btn').addEventListener('pointerdown', (e) => {
-      e.preventDefault(); if (!socket) return;
-      if (myPlayer.tool === 'apple') { socket.emit('eat', { itemId: 'apple' }); return; }
-      
-      socket.emit('attack', { angle: myPlayer.angle });
-      
-      // Визуальные эффекты для ближнего боя
-      if (myPlayer.tool === 'sword') effects.push({ type: 'swing', angle: myPlayer.angle, life: 10, x: myPlayer.x, y: myPlayer.y });
-      if (myPlayer.tool === 'axe' || myPlayer.tool === 'pickaxe') effects.push({ type: 'hit', angle: myPlayer.angle, life: 5, x: myPlayer.x, y: myPlayer.y });
-    });
+    // Кнопка блока
+    const shieldBtn = document.getElementById('shield-btn');
+    shieldBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); isBlocking = true; socket.emit('shield', { active: true }); });
+    shieldBtn.addEventListener('pointerup', (e) => { e.preventDefault(); isBlocking = false; socket.emit('shield', { active: false }); });
 
+    // ИГРОВОЙ ЦИКЛ
     function loop() {
       const speed = 0.15; myPlayer.x += moveVec.x * speed; myPlayer.y += moveVec.y * speed;
-      const now = Date.now();
-      if (socket && socket.connected && now - lastMoveSent > 50) { socket.emit('move', { x: myPlayer.x, y: myPlayer.y, angle: myPlayer.angle }); lastMoveSent = now; }
+      if (socket && socket.connected) socket.emit('move', { x: myPlayer.x, y: myPlayer.y, angle: myPlayer.angle });
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       const cx = canvas.width / 2; const cy = canvas.height / 2; const gridSize = 40;
 
+      // Сетка
       ctx.strokeStyle = '#2a2a2a'; ctx.lineWidth = 1; ctx.beginPath();
       const offsetX = (myPlayer.x * gridSize) % gridSize; const offsetY = (myPlayer.y * gridSize) % gridSize;
       for (let i = -gridSize; i < canvas.width + gridSize; i += gridSize) { ctx.moveTo(i - offsetX, 0); ctx.lineTo(i - offsetX, canvas.height); }
       for (let i = -gridSize; i < canvas.height + gridSize; i += gridSize) { ctx.moveTo(0, i - offsetY); ctx.lineTo(canvas.width, i - offsetY); }
       ctx.stroke();
 
-      // Ресурсы
+      // Рисуем всё (ресурсы, мобы, дроп, снаряды)
       allResources.forEach(res => {
         const px = cx + (res.x - myPlayer.x) * gridSize; const py = cy + (res.y - myPlayer.y) * gridSize;
-        if (res.type === 'tree') {
-          ctx.fillStyle = '#5c3a21'; ctx.fillRect(px - 6, py - 10, 12, 20);
-          ctx.fillStyle = '#2d6a2e'; ctx.fillRect(px - 15, py - 25, 30, 20); ctx.fillRect(px - 10, py - 35, 20, 15);
-        } else {
-          ctx.fillStyle = '#7f8c8d'; ctx.fillRect(px - 15, py - 10, 30, 20); ctx.fillStyle = '#95a5a6'; ctx.fillRect(px - 10, py - 15, 20, 10);
-        }
-        if (res.hp < (res.type === 'tree' ? 100 : 150)) {
-          ctx.fillStyle = 'red'; ctx.fillRect(px - 15, py - 40, 30, 4); ctx.fillStyle = 'yellow'; ctx.fillRect(px - 15, py - 40, 30 * (res.hp / (res.type === 'tree' ? 100 : 150)), 4);
-        }
+        if (res.type === 'tree') { ctx.fillStyle = '#5c3a21'; ctx.fillRect(px - 6, py - 10, 12, 20); ctx.fillStyle = '#2d6a2e'; ctx.fillRect(px - 15, py - 25, 30, 20); }
+        else { ctx.fillStyle = '#7f8c8d'; ctx.fillRect(px - 15, py - 10, 30, 20); }
       });
-
-      // Мобы
-      allMobs.forEach(mob => {
-        if (!mob.alive) return;
-        const px = cx + (mob.x - myPlayer.x) * gridSize; const py = cy + (mob.y - myPlayer.y) * gridSize;
-        ctx.fillStyle = '#aa44ff'; ctx.beginPath(); ctx.arc(px, py, 18, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = 'red'; ctx.fillRect(px - 20, py - 30, 40, 6); ctx.fillStyle = 'lime'; ctx.fillRect(px - 20, py - 30, 40 * (mob.hp / mob.maxHp), 6);
-      });
-
-      // Дроп
-      allDrops.forEach(drop => {
-        const px = cx + (drop.x - myPlayer.x) * gridSize; const py = cy + (drop.y - myPlayer.y) * gridSize;
-        ctx.fillStyle = drop.itemId === 'wood' ? '#8B4513' : '#7f8c8d'; ctx.fillRect(px - 8, py - 8, 16, 16);
-        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.strokeRect(px - 8, py - 8, 16, 16);
-      });
-
-      // Снаряды (Стрелы и Фаерболы)
-      allProjectiles.forEach(p => {
-        const px = cx + (p.x - myPlayer.x) * gridSize; const py = cy + (p.y - myPlayer.y) * gridSize;
-        if (p.type === 'arrow') {
-          ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px - p.dx * 30, py - p.dy * 30); ctx.stroke();
-        } else if (p.type === 'fireball') {
-          ctx.fillStyle = '#ff6600'; ctx.beginPath(); ctx.arc(px, py, 8, 0, Math.PI * 2); ctx.fill();
-          ctx.fillStyle = '#ffcc00'; ctx.beginPath(); ctx.arc(px, py, 4, 0, Math.PI * 2); ctx.fill();
-        }
-      });
-
-      // Игроки
-      allPlayers.forEach(p => {
-        const px = cx + (p.x - myPlayer.x) * gridSize; const py = cy + (p.y - myPlayer.y) * gridSize;
-        ctx.fillStyle = '#e74c3c'; ctx.beginPath(); ctx.arc(px, py, 14, 0, Math.PI * 2); ctx.fill();
-      });
-
-      // Визуальные эффекты атак
-      effects = effects.filter(e => e.life > 0);
-      effects.forEach(e => {
-        const px = cx + (e.x - myPlayer.x) * gridSize; const py = cy + (e.y - myPlayer.y) * gridSize;
-        ctx.globalAlpha = e.life / 10;
-        if (e.type === 'swing') { // Дуга меча
-          ctx.strokeStyle = '#fff'; ctx.lineWidth = 4; ctx.beginPath();
-          ctx.arc(px, py, 80, e.angle - 0.8, e.angle + 0.8); ctx.stroke();
-        } else if (e.type === 'hit') { // Точный удар
-          ctx.fillStyle = '#fff'; ctx.fillRect(px + Math.cos(e.angle)*30 - 10, py + Math.sin(e.angle)*30 - 10, 20, 20);
-        }
-        ctx.globalAlpha = 1.0; e.life--;
-      });
-
-      // Мой персонаж
+      allMobs.forEach(mob => { if (!mob.alive) return; const px = cx + (mob.x - myPlayer.x) * gridSize; const py = cy + (mob.y - myPlayer.y) * gridSize; ctx.fillStyle = '#aa44ff'; ctx.beginPath(); ctx.arc(px, py, 18, 0, Math.PI * 2); ctx.fill(); });
+      allDrops.forEach(drop => { const px = cx + (drop.x - myPlayer.x) * gridSize; const py = cy + (drop.y - myPlayer.y) * gridSize; ctx.fillStyle = '#8B4513'; ctx.fillRect(px - 8, py - 8, 16, 16); });
+      
+      // Персонаж
       ctx.fillStyle = '#3498db'; ctx.fillRect(cx - 10, cy - 10, 20, 20);
       ctx.fillStyle = '#f1c40f'; ctx.fillRect(cx - 6, cy - 20, 12, 12);
+
+      // Прицел
       ctx.strokeStyle = 'white'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(myPlayer.angle) * 30, cy + Math.sin(myPlayer.angle) * 30); ctx.stroke();
+
+      // Визуализация щита (Синяя дуга 200 градусов)
+      if (isBlocking && equippedShield) {
+        ctx.strokeStyle = '#0096ff'; ctx.lineWidth = 6;
+        ctx.beginPath(); ctx.arc(cx, cy, 28, myPlayer.angle - 1.74, myPlayer.angle + 1.74); ctx.stroke();
+        ctx.fillStyle = 'rgba(0, 150, 255, 0.2)';
+        ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, 28, myPlayer.angle - 1.74, myPlayer.angle + 1.74); ctx.fill();
+      }
 
       requestAnimationFrame(loop);
     }
