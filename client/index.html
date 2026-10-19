@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>TON Haven</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="/socket.io/socket.io.js"></script>
@@ -10,36 +10,29 @@
 </head>
 <body>
   <div id="hud"><div class="hp-bar"><div class="hp-fill" id="hp-fill"></div><span id="hp-text">100 / 100</span></div></div>
-
   <div id="joy-left" class="joy"><div class="knob" id="knob-left"></div></div>
   <div id="joy-right" class="joy"><div class="knob" id="knob-right"></div></div>
   <div id="shield-btn">🛡️</div>
-
   <div id="hotbar">
     <div class="h-slot active" data-index="0"></div>
     <div class="h-slot" data-index="1"></div>
     <div class="h-slot" data-index="2"></div>
     <div class="h-slot" data-index="3"></div>
   </div>
-
   <div id="inventory-btn">🎒</div>
-
   <div id="inv-overlay">
     <div id="inv-window">
       <button class="close-btn" id="close-inv">✖</button>
       <div class="char-preview"><div class="char-sprite"><div class="char-head"></div></div></div>
-      
       <div class="equip-container">
         <div class="eq-slot" data-type="equip" data-slot="helmet">🪖</div>
         <div class="eq-slot" data-type="equip" data-slot="chest">🥋</div>
         <div class="eq-slot" data-type="equip" data-slot="shield">🛡️</div>
       </div>
-
       <div class="grid-container" id="inv-grid"></div>
       <div class="hotbar-in-inv" id="hotbar-inv"></div>
     </div>
   </div>
-
   <canvas id="game"></canvas>
   <script src="js/ui.js"></script>
   <script src="js/game.js"></script>
