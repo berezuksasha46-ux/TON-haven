@@ -9,11 +9,22 @@
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-  <div id="hud">HP: <span id="hp-val">100</span>/100</div>
+  <!-- HUD -->
+  <div id="hud">
+    <div class="hp-bar">
+      <div class="hp-fill" id="hp-fill"></div>
+      <span id="hp-text">100 / 100</span>
+    </div>
+  </div>
+
+  <!-- Джойстики -->
   <div id="joy-left" class="joy"><div class="knob" id="knob-left"></div></div>
   <div id="joy-right" class="joy"><div class="knob" id="knob-right"></div></div>
-  <div id="shield-btn">БЛОК</div>
 
+  <!-- Кнопка блока -->
+  <div id="shield-btn">🛡️</div>
+
+  <!-- Хотбар (4 слота) -->
   <div id="hotbar">
     <div class="h-slot active" data-index="0"></div>
     <div class="h-slot" data-index="1"></div>
@@ -21,25 +32,21 @@
     <div class="h-slot" data-index="3"></div>
   </div>
 
+  <!-- Кнопка инвентаря -->
   <div id="inventory-btn">🎒</div>
 
+  <!-- Окно инвентаря (будет стилизовано на Этапе 3) -->
   <div id="inv-overlay">
     <div id="inv-window">
-      <button class="close-btn" id="close-inv">X</button>
-      
+      <button class="close-btn" id="close-inv">✖</button>
       <div class="char-preview">
         <div class="char-sprite"><div class="char-head"></div></div>
       </div>
-      
       <div class="equip-container">
-        <div class="eq-slot" data-type="equip" data-slot="helmet">🪖<span>Шлем</span></div>
-        <div class="eq-slot" data-type="equip" data-slot="chest">🛡️<span>Броня</span></div>
-        <div class="eq-slot" data-type="equip" data-slot="legs">👖<span>Штаны</span></div>
-        <div class="eq-slot" data-type="equip" data-slot="boots">👢<span>Ботинки</span></div>
-        <div class="eq-slot" data-type="equip" data-slot="shield" id="eq-shield">🛡️<span>Щит</span></div>
-        <div class="eq-slot" data-type="equip" data-slot="ring">💍<span>Кольцо</span></div>
+        <div class="eq-slot" data-type="equip" data-slot="helmet">🪖</div>
+        <div class="eq-slot" data-type="equip" data-slot="chest">🥋</div>
+        <div class="eq-slot" data-type="equip" data-slot="shield">🛡️</div>
       </div>
-
       <div class="grid-container" id="inv-grid"></div>
       <div class="hotbar-in-inv" id="hotbar-inv"></div>
     </div>
@@ -47,8 +54,8 @@
 
   <canvas id="game"></canvas>
 
-  <!-- Подключаем модули -->
-  <script src="js/ui.js"></script>
+  <!-- Подключение скриптов -->
   <script src="js/game.js"></script>
+  <script src="js/ui.js"></script>
 </body>
 </html>
