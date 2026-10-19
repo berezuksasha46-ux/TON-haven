@@ -4,56 +4,37 @@ canvas { display: block; width: 100vw; height: 100vh; image-rendering: pixelated
 /* HUD */
 #hud { position: fixed; top: 10px; left: 10px; color: white; font-size: 16px; font-weight: bold; text-shadow: 2px 2px 0 #000; z-index: 10; }
 
-/* Джойстики (подняты выше, чтобы освободить низ) */
-.joy { position: fixed; bottom: 100px; width: 120px; height: 120px; border-radius: 50%; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.3); z-index: 10; touch-action: none; }
-#joy-left { left: 20px; } 
-#joy-right { right: 20px; background: rgba(255,0,0,0.1); border-color: rgba(255,0,0,0.3); }
-.knob { position: absolute; top: 35px; left: 35px; width: 50px; height: 50px; border-radius: 50%; background: rgba(255,255,255,0.6); pointer-events: none; }
+/* Джойстики */
+.joy { position: fixed; bottom: 90px; width: 110px; height: 110px; border-radius: 50%; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.3); z-index: 10; touch-action: none; }
+#joy-left { left: 20px; } #joy-right { right: 20px; background: rgba(255,0,0,0.1); border-color: rgba(255,0,0,0.3); }
+.knob { position: absolute; top: 30px; left: 30px; width: 50px; height: 50px; border-radius: 50%; background: rgba(255,255,255,0.6); pointer-events: none; }
 
-/* Кнопка инвентаря (под правым джойстиком) */
-#inventory-btn { position: fixed; bottom: 20px; right: 40px; width: 80px; height: 50px; background: rgba(0,0,0,0.7); border: 2px solid #666; border-radius: 8px; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 24px; z-index: 20; cursor: pointer; }
+/* Нижний Хотбар (4 слота) */
+#hotbar { position: fixed; bottom: 15px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; z-index: 10; }
+.h-slot { width: 55px; height: 55px; background: rgba(0,0,0,0.7); border: 2px solid #666; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 22px; touch-action: none; position: relative; }
+.h-slot.active { border-color: #ffcc00; background: rgba(255,204,0,0.2); }
 
-/* Хотбар (4 слота в самом низу) */
-#hotbar { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; z-index: 10; }
-.hotbar-slot { width: 55px; height: 55px; background: rgba(0,0,0,0.7); border: 2px solid #666; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 12px; touch-action: none; text-align: center; position: relative; }
-.hotbar-slot.active { border-color: #ffcc00; background: rgba(255,204,0,0.2); }
+/* Кнопки управления */
+#inventory-btn { position: fixed; bottom: 20px; right: 30px; width: 60px; height: 60px; background: rgba(0,0,0,0.7); border: 2px solid #666; border-radius: 8px; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 28px; z-index: 20; cursor: pointer; }
+#shield-btn { position: fixed; bottom: 200px; right: 30px; width: 60px; height: 60px; border-radius: 50%; background: rgba(0, 150, 255, 0.6); border: 3px solid #0096ff; color: white; font-weight: bold; font-size: 12px; display: none; align-items: center; justify-content: center; z-index: 10; touch-action: none; }
 
-/* Кнопка щита */
-#shield-btn { position: fixed; bottom: 230px; right: 20px; width: 60px; height: 60px; border-radius: 50%; background: rgba(0, 150, 255, 0.6); border: 3px solid #0096ff; color: white; font-weight: bold; font-size: 12px; display: none; align-items: center; justify-content: center; z-index: 10; touch-action: none; }
+/* ОКНО ИНВЕНТАРЯ (Компактное) */
+#inv-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.5); display: none; z-index: 100; align-items: center; justify-content: center; }
+#inv-overlay.open { display: flex; }
 
-/* Окно инвентаря (не на весь экран, с отступами) */
-#inventory-panel { 
-  position: fixed; 
-  top: 3vh; /* Отступ сверху 2-3 см (в vh) */
-  left: 0.5vw; /* Отступ слева 0.5 см */
-  width: 99vw; /* Ширина с учетом отступов */
-  height: 92vh; /* Высота, чтобы снизу было видно игру */
-  background: rgba(20, 20, 20, 0.95); 
-  border: 2px solid #444; 
-  border-radius: 10px;
-  z-index: 100; 
-  display: none; 
-  flex-direction: column; 
-  align-items: center; 
-  padding: 10px;
-  box-sizing: border-box;
-}
-#inventory-panel.open { display: flex; }
+#inv-window { width: 320px; background: #2a2a2a; border: 3px solid #555; border-radius: 12px; padding: 15px; display: flex; flex-direction: column; gap: 12px; }
+.inv-title { color: #fff; text-align: center; font-size: 14px; margin: 0 0 5px 0; }
 
-/* Блок персонажа (сверху) */
-.char-preview { display: flex; justify-content: center; align-items: center; margin-bottom: 10px; }
-.char-body { width: 60px; height: 80px; background: #3498db; border-radius: 8px; position: relative; border: 2px solid #fff; }
-.char-head { width: 30px; height: 30px; background: #f1c40f; border-radius: 50%; position: absolute; top: -25px; left: 15px; }
+/* Экипировка (Сверху) */
+.equip-container { display: flex; justify-content: center; gap: 6px; }
+.eq-slot { width: 40px; height: 40px; background: #1a1a1a; border: 2px solid #444; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 18px; color: #fff; }
 
-/* Блок слотов экипировки */
-.equip-row { display: flex; gap: 10px; margin-bottom: 15px; }
-.equip-slot { width: 45px; height: 45px; background: #222; border: 2px solid #555; border-radius: 5px; display: flex; align-items: center; justify-content: center; color: #777; font-size: 9px; text-align: center; flex-direction: column; }
-.equip-slot span { font-size: 18px; }
+/* Сетка 16 слотов (Центр) */
+.grid-container { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; background: #1a1a1a; padding: 10px; border-radius: 8px; }
+.i-slot { width: 45px; height: 45px; background: #333; border: 2px solid #444; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 18px; position: relative; }
 
-/* Сетка инвентаря 4х4 (по центру) */
-.inv-grid { display: grid; grid-template-columns: repeat(4, 50px); grid-gap: 8px; margin-bottom: 15px; }
-.inv-slot { width: 50px; height: 50px; background: #333; border: 2px solid #555; border-radius: 5px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 12px; position: relative; }
-.item-count { position: absolute; bottom: 2px; right: 4px; font-size: 11px; font-weight: bold; color: #fff; text-shadow: 1px 1px 0 #000;}
+/* Хотбар внутри инвентаря (Снизу) */
+.hotbar-in-inv { display: flex; justify-content: center; gap: 6px; margin-top: 5px; }
 
-/* Разделитель */
-.divider { width: 100%; height: 2px; background: #555; margin: 5px 0 15px 0; }
+/* Предметы и счетчики */
+.item-count { position: absolute; bottom: 1px; right: 3px; font-size: 10px; font-weight: bold; color: #fff; text-shadow: 1px 1px 0 #000; }
