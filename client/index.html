@@ -7,69 +7,56 @@
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="/socket.io/socket.io.js"></script>
   <style>
-    body { margin: 0; padding: 0; overflow: hidden; background: #1a1a1a; font-family: 'Courier New', Courier, monospace; -webkit-user-select: none; user-select: none; }
+    body { margin: 0; padding: 0; overflow: hidden; background: #1a1a1a; font-family: 'Courier New', monospace; -webkit-user-select: none; user-select: none; }
     canvas { display: block; width: 100vw; height: 100vh; image-rendering: pixelated; }
-    
-    /* HUD */
     #hud { position: fixed; top: 10px; left: 10px; color: white; font-size: 16px; font-weight: bold; text-shadow: 2px 2px 0 #000; z-index: 10; }
-    #inventory { position: fixed; top: 10px; right: 10px; background: rgba(0,0,0,0.7); padding: 8px 12px; border-radius: 4px; color: #fff; font-size: 14px; z-index: 10; border: 2px solid #555; }
-    
-    /* Джойстики */
+    #inventory { position: fixed; top: 10px; right: 10px; background: rgba(0,0,0,0.7); padding: 8px; border-radius: 4px; color: #fff; font-size: 14px; z-index: 10; border: 2px solid #555; }
     .joy { position: fixed; bottom: 30px; width: 110px; height: 110px; border-radius: 50%; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.3); z-index: 10; touch-action: none; }
-    #joy-left { left: 20px; }
-    #joy-right { right: 20px; background: rgba(255,0,0,0.1); border-color: rgba(255,0,0,0.3); }
+    #joy-left { left: 20px; } #joy-right { right: 20px; background: rgba(255,0,0,0.1); border-color: rgba(255,0,0,0.3); }
     .knob { position: absolute; top: 30px; left: 30px; width: 50px; height: 50px; border-radius: 50%; background: rgba(255,255,255,0.6); pointer-events: none; }
-    
-    /* Слоты быстрого доступа (Hotbar) */
-    #hotbar { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; z-index: 10; }
-    .slot { width: 50px; height: 50px; background: rgba(0,0,0,0.7); border: 2px solid #666; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 12px; touch-action: none; }
+    #hotbar { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; z-index: 10; }
+    .slot { width: 45px; height: 45px; background: rgba(0,0,0,0.7); border: 2px solid #666; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 10px; touch-action: none; text-align: center; }
     .slot.active { border-color: #ffcc00; background: rgba(255,204,0,0.2); }
-    
-    /* Динамическая кнопка действия */
     #action-btn { position: fixed; bottom: 160px; right: 40px; width: 80px; height: 80px; border-radius: 50%; background: rgba(0, 150, 255, 0.7); border: 3px solid #0096ff; color: white; font-weight: bold; font-size: 14px; display: flex; align-items: center; justify-content: center; z-index: 10; touch-action: none; text-shadow: 1px 1px 0 #000; }
     #action-btn:active { background: rgba(0, 150, 255, 1); }
   </style>
 </head>
 <body>
   <div id="hud">HP: <span id="hp-val">100</span>/100</div>
-  <div id="inventory">Wood: <span id="wood-val">0</span> | Stone: <span id="stone-val">0</span></div>
-  
+  <div id="inventory">Wood: <span id="wood-val">0</span></div>
   <div id="joy-left" class="joy"><div class="knob" id="knob-left"></div></div>
   <div id="joy-right" class="joy"><div class="knob" id="knob-right"></div></div>
   
-  <!-- Слоты быстрого доступа -->
   <div id="hotbar">
+    <div class="slot" data-tool="apple">Еда</div>
     <div class="slot active" data-tool="hand">Рука</div>
     <div class="slot" data-tool="axe">Топор</div>
     <div class="slot" data-tool="pickaxe">Кирка</div>
     <div class="slot" data-tool="sword">Меч</div>
+    <div class="slot" data-tool="bow">Лук</div>
+    <div class="slot" data-tool="staff">Посох</div>
   </div>
 
-  <!-- Динамическая кнопка -->
-  <div id="action-btn">Добыть</div>
-
+  <div id="action-btn">Ударить</div>
   <canvas id="game"></canvas>
 
   <script>
     window.onerror = function() { return true; }; 
     const tg = window.Telegram?.WebApp;
     if (tg) { tg.ready(); tg.expand(); }
-
     const canvas = document.getElementById('game');
     const ctx = canvas.getContext('2d');
     function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
-    window.addEventListener('resize', resize);
-    resize();
+    window.addEventListener('resize', resize); resize();
 
     let myPlayer = { id: -1, x: 40, y: 40, angle: 0, hp: 100, maxHp: 100, tool: 'hand' };
-    let allPlayers = [];
-    let allResources = [];
-    let inventory = { wood: 0, stone: 0 };
+    let allPlayers = [], allResources = [], allMobs = [], allDrops = [], allProjectiles = [];
+    let inventory = { wood: 0, apple: 5 };
     let socket = null;
+    let effects = []; // Для визуальных эффектов (вспышки, взрывы)
 
     fetch('/api/auth', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
+      method: 'POST', headers: {'Content-Type':'application/json'},
       body: JSON.stringify({ initData: tg?.initData || '', devTgId: tg ? null : Date.now() % 100000 })
     })
     .then(r => r.json())
@@ -79,161 +66,152 @@
       socket = io({ auth: { playerId: myPlayer.id } });
       
       socket.on('welcome', ({ state }) => {
-        myPlayer.x = state.x; myPlayer.y = state.y;
-        inventory = state.inv || {};
-        updateUI();
+        myPlayer.x = state.x; myPlayer.y = state.y; inventory = state.inv; updateUI();
       });
 
-      socket.on('zoneState', (players, resources) => {
+      socket.on('zoneState', (players, res, mobs, drops, projs) => {
         allPlayers = players.filter(p => Number(p.id) !== myPlayer.id);
-        if (resources) allResources = resources;
+        allResources = res; allMobs = mobs; allDrops = drops; allProjectiles = projs;
       });
 
-      socket.on('updateInv', (inv) => {
-        inventory = inv;
-        updateUI();
-      });
+      socket.on('updateInv', (inv) => { inventory = inv; updateUI(); });
+      socket.on('updateHp', (hp) => { myPlayer.hp = hp; updateUI(); });
+      socket.on('errorMsg', (msg) => { alert(msg); });
     });
 
     function updateUI() {
       document.getElementById('wood-val').innerText = inventory.wood || 0;
-      document.getElementById('stone-val').innerText = inventory.stone || 0;
+      document.getElementById('hp-val').innerText = Math.round(myPlayer.hp);
     }
 
-    // --- УПРАВЛЕНИЕ ---
     let moveVec = { x: 0, y: 0 };
     let lastMoveSent = 0;
 
     function setupJoystick(joyId, knobId, onChange) {
-      const joy = document.getElementById(joyId);
-      const knob = document.getElementById(knobId);
-      let pointerId = null;
-      let center = { x: 0, y: 0 };
-
+      const joy = document.getElementById(joyId); const knob = document.getElementById(knobId);
+      let pointerId = null; let center = { x: 0, y: 0 };
       joy.addEventListener('pointerdown', (e) => {
-        pointerId = e.pointerId;
-        joy.setPointerCapture(e.pointerId);
-        const rect = joy.getBoundingClientRect();
-        center = { x: rect.left + rect.width/2, y: rect.top + rect.height/2 };
+        pointerId = e.pointerId; joy.setPointerCapture(e.pointerId);
+        const rect = joy.getBoundingClientRect(); center = { x: rect.left + rect.width/2, y: rect.top + rect.height/2 };
         handleMove(e);
       });
-
       joy.addEventListener('pointermove', (e) => { if (e.pointerId === pointerId) handleMove(e); });
-      joy.addEventListener('pointerup', (e) => {
-        if (e.pointerId === pointerId) {
-          pointerId = null;
-          knob.style.transform = `translate(0px, 0px)`;
-          onChange(0, 0);
-        }
-      });
-
+      joy.addEventListener('pointerup', (e) => { if (e.pointerId === pointerId) { pointerId = null; knob.style.transform = `translate(0px, 0px)`; onChange(0, 0); } });
       function handleMove(e) {
         let dx = e.clientX - center.x; let dy = e.clientY - center.y;
         const dist = Math.hypot(dx, dy); const maxDist = 35;
         if (dist > maxDist) { dx = (dx/dist)*maxDist; dy = (dy/dist)*maxDist; }
-        knob.style.transform = `translate(${dx}px, ${dy}px)`;
-        onChange(dx/maxDist, dy/maxDist);
+        knob.style.transform = `translate(${dx}px, ${dy}px)`; onChange(dx/maxDist, dy/maxDist);
       }
     }
 
     setupJoystick('joy-left', 'knob-left', (x, y) => { moveVec = { x, y }; });
-    setupJoystick('joy-right', 'knob-right', (x, y) => {
-      if (x !== 0 || y !== 0) myPlayer.angle = Math.atan2(y, x);
-    });
+    setupJoystick('joy-right', 'knob-right', (x, y) => { if (x !== 0 || y !== 0) myPlayer.angle = Math.atan2(y, x); });
 
-    // --- ХОТБАР И ДЕЙСТВИЕ ---
     document.querySelectorAll('.slot').forEach(slot => {
       slot.addEventListener('pointerdown', (e) => {
-        e.preventDefault();
-        document.querySelectorAll('.slot').forEach(s => s.classList.remove('active'));
-        slot.classList.add('active');
+        e.preventDefault(); document.querySelectorAll('.slot').forEach(s => s.classList.remove('active')); slot.classList.add('active');
         myPlayer.tool = slot.getAttribute('data-tool');
-        
-        // Меняем текст на кнопке (ТЗ: выбрал еду - "Съесть", кирку - "Добыть")
         const btn = document.getElementById('action-btn');
-        if (myPlayer.tool === 'hand') btn.innerText = 'Ударить';
+        if (myPlayer.tool === 'apple') btn.innerText = 'Съесть';
+        else if (myPlayer.tool === 'hand') btn.innerText = 'Ударить';
         else if (myPlayer.tool === 'axe' || myPlayer.tool === 'pickaxe') btn.innerText = 'Добыть';
-        else if (myPlayer.tool === 'sword') btn.innerText = 'Атака';
-        
+        else if (myPlayer.tool === 'sword') btn.innerText = 'Удар';
+        else if (myPlayer.tool === 'bow') btn.innerText = 'Выстрел';
+        else if (myPlayer.tool === 'staff') btn.innerText = 'Магия';
         if (socket) socket.emit('equip', { toolId: myPlayer.tool });
       });
     });
 
     document.getElementById('action-btn').addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      if (socket) socket.emit('attack', { angle: myPlayer.angle });
+      e.preventDefault(); if (!socket) return;
+      if (myPlayer.tool === 'apple') { socket.emit('eat', { itemId: 'apple' }); return; }
+      
+      socket.emit('attack', { angle: myPlayer.angle });
+      
+      // Визуальные эффекты для ближнего боя
+      if (myPlayer.tool === 'sword') effects.push({ type: 'swing', angle: myPlayer.angle, life: 10, x: myPlayer.x, y: myPlayer.y });
+      if (myPlayer.tool === 'axe' || myPlayer.tool === 'pickaxe') effects.push({ type: 'hit', angle: myPlayer.angle, life: 5, x: myPlayer.x, y: myPlayer.y });
     });
 
-    // --- ИГРОВОЙ ЦИКЛ ---
     function loop() {
-      const speed = 0.15;
-      myPlayer.x += moveVec.x * speed;
-      myPlayer.y += moveVec.y * speed;
-
+      const speed = 0.15; myPlayer.x += moveVec.x * speed; myPlayer.y += moveVec.y * speed;
       const now = Date.now();
-      if (socket && socket.connected && now - lastMoveSent > 50) {
-        socket.emit('move', { x: myPlayer.x, y: myPlayer.y, angle: myPlayer.angle });
-        lastMoveSent = now;
-      }
+      if (socket && socket.connected && now - lastMoveSent > 50) { socket.emit('move', { x: myPlayer.x, y: myPlayer.y, angle: myPlayer.angle }); lastMoveSent = now; }
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      const cx = canvas.width / 2;
-      const cy = canvas.height / 2;
-      const gridSize = 40;
+      const cx = canvas.width / 2; const cy = canvas.height / 2; const gridSize = 40;
 
-      // Сетка
-      ctx.strokeStyle = '#2a2a2a'; ctx.lineWidth = 1;
-      ctx.beginPath();
-      const offsetX = (myPlayer.x * gridSize) % gridSize;
-      const offsetY = (myPlayer.y * gridSize) % gridSize;
+      ctx.strokeStyle = '#2a2a2a'; ctx.lineWidth = 1; ctx.beginPath();
+      const offsetX = (myPlayer.x * gridSize) % gridSize; const offsetY = (myPlayer.y * gridSize) % gridSize;
       for (let i = -gridSize; i < canvas.width + gridSize; i += gridSize) { ctx.moveTo(i - offsetX, 0); ctx.lineTo(i - offsetX, canvas.height); }
       for (let i = -gridSize; i < canvas.height + gridSize; i += gridSize) { ctx.moveTo(0, i - offsetY); ctx.lineTo(canvas.width, i - offsetY); }
       ctx.stroke();
 
-      // 1. РИСУЕМ РЕСУРСЫ (Пиксель-арт кодом)
+      // Ресурсы
       allResources.forEach(res => {
-        const px = cx + (res.x - myPlayer.x) * gridSize;
-        const py = cy + (res.y - myPlayer.y) * gridSize;
-        
+        const px = cx + (res.x - myPlayer.x) * gridSize; const py = cy + (res.y - myPlayer.y) * gridSize;
         if (res.type === 'tree') {
-          // Ствол
           ctx.fillStyle = '#5c3a21'; ctx.fillRect(px - 6, py - 10, 12, 20);
-          // Листва
-          ctx.fillStyle = '#2d6a2e'; 
-          ctx.fillRect(px - 15, py - 25, 30, 20);
-          ctx.fillRect(px - 10, py - 35, 20, 15);
-        } else if (res.type === 'stone') {
-          // Камень
-          ctx.fillStyle = '#7f8c8d'; 
-          ctx.fillRect(px - 15, py - 10, 30, 20);
-          ctx.fillStyle = '#95a5a6'; 
-          ctx.fillRect(px - 10, py - 15, 20, 10);
+          ctx.fillStyle = '#2d6a2e'; ctx.fillRect(px - 15, py - 25, 30, 20); ctx.fillRect(px - 10, py - 35, 20, 15);
+        } else {
+          ctx.fillStyle = '#7f8c8d'; ctx.fillRect(px - 15, py - 10, 30, 20); ctx.fillStyle = '#95a5a6'; ctx.fillRect(px - 10, py - 15, 20, 10);
         }
-
-        // Полоска прочности
         if (res.hp < (res.type === 'tree' ? 100 : 150)) {
-          ctx.fillStyle = 'red'; ctx.fillRect(px - 15, py - 40, 30, 4);
-          ctx.fillStyle = 'yellow'; ctx.fillRect(px - 15, py - 40, 30 * (res.hp / (res.type === 'tree' ? 100 : 150)), 4);
+          ctx.fillStyle = 'red'; ctx.fillRect(px - 15, py - 40, 30, 4); ctx.fillStyle = 'yellow'; ctx.fillRect(px - 15, py - 40, 30 * (res.hp / (res.type === 'tree' ? 100 : 150)), 4);
         }
       });
 
-      // 2. РИСУЕМ ДРУГИХ ИГРОКОВ
+      // Мобы
+      allMobs.forEach(mob => {
+        if (!mob.alive) return;
+        const px = cx + (mob.x - myPlayer.x) * gridSize; const py = cy + (mob.y - myPlayer.y) * gridSize;
+        ctx.fillStyle = '#aa44ff'; ctx.beginPath(); ctx.arc(px, py, 18, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = 'red'; ctx.fillRect(px - 20, py - 30, 40, 6); ctx.fillStyle = 'lime'; ctx.fillRect(px - 20, py - 30, 40 * (mob.hp / mob.maxHp), 6);
+      });
+
+      // Дроп
+      allDrops.forEach(drop => {
+        const px = cx + (drop.x - myPlayer.x) * gridSize; const py = cy + (drop.y - myPlayer.y) * gridSize;
+        ctx.fillStyle = drop.itemId === 'wood' ? '#8B4513' : '#7f8c8d'; ctx.fillRect(px - 8, py - 8, 16, 16);
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.strokeRect(px - 8, py - 8, 16, 16);
+      });
+
+      // Снаряды (Стрелы и Фаерболы)
+      allProjectiles.forEach(p => {
+        const px = cx + (p.x - myPlayer.x) * gridSize; const py = cy + (p.y - myPlayer.y) * gridSize;
+        if (p.type === 'arrow') {
+          ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px - p.dx * 30, py - p.dy * 30); ctx.stroke();
+        } else if (p.type === 'fireball') {
+          ctx.fillStyle = '#ff6600'; ctx.beginPath(); ctx.arc(px, py, 8, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = '#ffcc00'; ctx.beginPath(); ctx.arc(px, py, 4, 0, Math.PI * 2); ctx.fill();
+        }
+      });
+
+      // Игроки
       allPlayers.forEach(p => {
-        const px = cx + (p.x - myPlayer.x) * gridSize;
-        const py = cy + (p.y - myPlayer.y) * gridSize;
+        const px = cx + (p.x - myPlayer.x) * gridSize; const py = cy + (p.y - myPlayer.y) * gridSize;
         ctx.fillStyle = '#e74c3c'; ctx.beginPath(); ctx.arc(px, py, 14, 0, Math.PI * 2); ctx.fill();
       });
 
-      // 3. РИСУЕМ СЕБЯ (Пиксельный человечек)
-      ctx.fillStyle = '#3498db'; // Синяя одежда
-      ctx.fillRect(cx - 10, cy - 10, 20, 20);
-      ctx.fillStyle = '#f1c40f'; // Голова
-      ctx.fillRect(cx - 6, cy - 20, 12, 12);
-      
-      // Прицел
-      ctx.strokeStyle = 'white'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(cx, cy);
-      ctx.lineTo(cx + Math.cos(myPlayer.angle) * 30, cy + Math.sin(myPlayer.angle) * 30); ctx.stroke();
+      // Визуальные эффекты атак
+      effects = effects.filter(e => e.life > 0);
+      effects.forEach(e => {
+        const px = cx + (e.x - myPlayer.x) * gridSize; const py = cy + (e.y - myPlayer.y) * gridSize;
+        ctx.globalAlpha = e.life / 10;
+        if (e.type === 'swing') { // Дуга меча
+          ctx.strokeStyle = '#fff'; ctx.lineWidth = 4; ctx.beginPath();
+          ctx.arc(px, py, 80, e.angle - 0.8, e.angle + 0.8); ctx.stroke();
+        } else if (e.type === 'hit') { // Точный удар
+          ctx.fillStyle = '#fff'; ctx.fillRect(px + Math.cos(e.angle)*30 - 10, py + Math.sin(e.angle)*30 - 10, 20, 20);
+        }
+        ctx.globalAlpha = 1.0; e.life--;
+      });
+
+      // Мой персонаж
+      ctx.fillStyle = '#3498db'; ctx.fillRect(cx - 10, cy - 10, 20, 20);
+      ctx.fillStyle = '#f1c40f'; ctx.fillRect(cx - 6, cy - 20, 12, 12);
+      ctx.strokeStyle = 'white'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(myPlayer.angle) * 30, cy + Math.sin(myPlayer.angle) * 30); ctx.stroke();
 
       requestAnimationFrame(loop);
     }
