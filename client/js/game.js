@@ -1,19 +1,22 @@
-// game.js - Движок и Сеть
 window.onerror = function(m) { console.error(m); return true; };
 const tg = window.Telegram?.WebApp;
-if (tg) { tg.ready(); tg.expand(); }
+if (tg) { 
+  tg.ready(); 
+  tg.expand(); 
+  if (tg.disableVerticalSwipes) tg.disableVerticalSwipes(); // Блокировка свайпа вниз [citation:4][citation:7]
+}
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 const resize = () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; };
 window.addEventListener('resize', resize); resize();
+if (window.visualViewport) window.visualViewport.addEventListener('resize', resize);
 
 window.GameState = {
   me: { id: -1, x: 40, y: 40, angle: 0, hp: 100, maxHp: 100, activeSlot: 0 },
   players: [], mobs: [], resources: [], drops: [],
   targetMe: { x: 40, y: 40, angle: 0 },
-  isBlocking: false, attackFlash: 0, socket: null,
-  inv: {}, hotbar: [], equip: {}
+  isBlocking: false, attackFlash: 0, socket: null, inv: {}, hotbar: [], equip: {}
 };
 const GS = window.GameState;
 const gridSize = 40;
@@ -26,14 +29,12 @@ fetch('/api/auth', {
 .then(({ playerId }) => {
   if (!playerId) return alert('Ошибка авторизации');
   GS.me.id = playerId;
-  GS.socket = io({ query: { playerId } });
+  GS.socket = io({ query: { playerId }, reconnectionAttempts: Infinity });
   
   GS.socket.on('init', (state) => {
-    GS.me.hp = state.hp; GS.me.maxHp = state.maxHp;
-    GS.me.x = state.x; GS.me.y = state.y;
+    GS.me.hp = state.hp; GS.me.maxHp = state.maxHp; GS.me.x = state.x; GS.me.y = state.y;
     GS.targetMe.x = state.x; GS.targetMe.y = state.y;
     GS.inv = state.inv; GS.hotbar = state.hotbar; GS.equip = state.equip;
-    
     if (GS.equip.shield) document.getElementById('shield-btn').style.display = 'flex';
     if(window.updateUI) window.updateUI();
   });
@@ -45,43 +46,32 @@ fetch('/api/auth', {
 
   GS.socket.on('hp', (hp) => { GS.me.hp = hp; if(window.updateUI) window.updateUI(); });
   GS.socket.on('error', alert);
-  
-  GS.socket.on('updateEquip', (eq) => { GS.equip = eq; document.getElementById('shield-btn').style.display = eq.shield ? 'flex' : 'none'; if(window.updateUI) window.updateUI(); });
+  GS.socket.on('updateEquip', (eq) => { GS.equip = eq; const b = document.getElementById('shield-btn'); if(b) b.style.display = eq.shield ? 'flex' : 'none'; if(window.updateUI) window.updateUI(); });
   GS.socket.on('updateHotbar', (hb) => { GS.hotbar = hb; if(window.updateUI) window.updateUI(); });
   GS.socket.on('updateInv', (inv) => { GS.inv = inv; if(window.updateUI) window.updateUI(); });
 });
 
-// Управление
-let moveVec = { x: 0, y: 0 };
-let aimActive = false;
-
+let moveVec = { x: 0, y: 0 }, aimActive = false;
 function setupJoystick(joyId, knobId, onChange, onRelease) {
-  const joy = document.getElementById(joyId); const knob = document.getElementById(knobId);
+  const joy = document.getElementById(joyId), knob = document.getElementById(knobId);
   if (!joy || !knob) return;
-  let pointerId = null; let center = { x: 0, y: 0 };
-  
+  let pointerId = null, center = { x: 0, y: 0 };
   joy.addEventListener('pointerdown', (e) => {
     pointerId = e.pointerId; joy.setPointerCapture(e.pointerId);
     const rect = joy.getBoundingClientRect(); center = { x: rect.left + rect.width/2, y: rect.top + rect.height/2 };
     handleMove(e);
   });
   joy.addEventListener('pointermove', (e) => { if (e.pointerId === pointerId) handleMove(e); });
-  
-  const endTouch = (e) => {
-    if (e.pointerId === pointerId) { pointerId = null; knob.style.transform = `translate(0px, 0px)`; onChange(0, 0); if (onRelease) onRelease(); }
-  };
-  joy.addEventListener('pointerup', endTouch);
-  joy.addEventListener('pointercancel', endTouch);
-  
+  const endTouch = (e) => { if (e.pointerId === pointerId) { pointerId = null; knob.style.transform = `translate(0px, 0px)`; onChange(0, 0); if (onRelease) onRelease(); } };
+  joy.addEventListener('pointerup', endTouch); joy.addEventListener('pointercancel', endTouch);
   function handleMove(e) {
-    let dx = e.clientX - center.x; let dy = e.clientY - center.y;
-    const dist = Math.hypot(dx, dy); const maxDist = 40;
+    let dx = e.clientX - center.x, dy = e.clientY - center.y;
+    const dist = Math.hypot(dx, dy), maxDist = 40;
     if (dist > maxDist) { dx = (dx/dist)*maxDist; dy = (dy/dist)*maxDist; }
     knob.style.transform = `translate(${dx}px, ${dy}px)`;
     onChange(dx/maxDist, dy/maxDist);
   }
 }
-
 setupJoystick('joy-left', 'knob-left', (x, y) => { moveVec = { x, y }; });
 setupJoystick('joy-right', 'knob-right', 
   (x, y) => { if (x !== 0 || y !== 0) { GS.targetMe.angle = Math.atan2(y, x); aimActive = true; } }, 
@@ -100,7 +90,6 @@ document.querySelectorAll('.h-slot').forEach((slot, i) => {
   });
 });
 
-// Игровой цикл
 function loop() {
   GS.targetMe.x += moveVec.x * 0.12; GS.targetMe.y += moveVec.y * 0.12;
   GS.me.x += (GS.targetMe.x - GS.me.x) * 0.3; GS.me.y += (GS.targetMe.y - GS.me.y) * 0.3;
@@ -108,28 +97,24 @@ function loop() {
   if (GS.socket) GS.socket.emit('move', { x: GS.me.x, y: GS.me.y, angle: GS.me.angle });
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  const cx = canvas.width / 2; const cy = canvas.height / 2;
-
-  // Сетка
+  const cx = canvas.width / 2, cy = canvas.height / 2;
   ctx.strokeStyle = '#2a2a2a'; ctx.lineWidth = 1; ctx.beginPath();
-  const offsetX = (GS.me.x * gridSize) % gridSize; const offsetY = (GS.me.y * gridSize) % gridSize;
+  const offsetX = (GS.me.x * gridSize) % gridSize, offsetY = (GS.me.y * gridSize) % gridSize;
   for (let i = -gridSize; i < canvas.width + gridSize; i += gridSize) { ctx.moveTo(i - offsetX, 0); ctx.lineTo(i - offsetX, canvas.height); }
   for (let i = -gridSize; i < canvas.height + gridSize; i += gridSize) { ctx.moveTo(0, i - offsetY); ctx.lineTo(canvas.width, i - offsetY); }
   ctx.stroke();
 
-  // Ресурсы
   GS.resources.forEach(res => {
-    const px = cx + (res.x - GS.me.x) * gridSize; const py = cy + (res.y - GS.me.y) * gridSize;
+    const px = cx + (res.x - GS.me.x) * gridSize, py = cy + (res.y - GS.me.y) * gridSize;
     if (res.type === 'tree') { ctx.fillStyle = '#5c3a21'; ctx.fillRect(px - 6, py - 10, 12, 20); ctx.fillStyle = '#2d6a2e'; ctx.fillRect(px - 15, py - 25, 30, 20); }
     else { ctx.fillStyle = '#7f8c8d'; ctx.fillRect(px - 15, py - 10, 30, 20); }
     if (res.hp < res.maxHp) { ctx.fillStyle = 'red'; ctx.fillRect(px - 15, py - 40, 30, 4); ctx.fillStyle = 'yellow'; ctx.fillRect(px - 15, py - 40, 30 * (res.hp / res.maxHp), 4); }
   });
 
-  // Мобы
   const time = Date.now() / 200;
   GS.mobs.forEach(mob => {
     if (!mob.alive) return;
-    const px = cx + (mob.x - GS.me.x) * gridSize; const py = cy + (mob.y - GS.me.y) * gridSize;
+    const px = cx + (mob.x - GS.me.x) * gridSize, py = cy + (mob.y - GS.me.y) * gridSize;
     const bounce = Math.sin(time + mob.x) * 3;
     ctx.fillStyle = '#9b59b6'; ctx.beginPath(); ctx.ellipse(px, py + bounce, 18, 14, 0, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(px - 6, py - 4 + bounce, 4, 0, Math.PI * 2); ctx.arc(px + 6, py - 4 + bounce, 4, 0, Math.PI * 2); ctx.fill();
@@ -137,32 +122,27 @@ function loop() {
     ctx.fillStyle = 'red'; ctx.fillRect(px - 20, py - 30, 40, 6); ctx.fillStyle = 'lime'; ctx.fillRect(px - 20, py - 30, 40 * (mob.hp / mob.maxHp), 6);
   });
 
-  // Дроп
   GS.drops.forEach(drop => {
-    const px = cx + (drop.x - GS.me.x) * gridSize; const py = cy + (drop.y - GS.me.y) * gridSize;
+    const px = cx + (drop.x - GS.me.x) * gridSize, py = cy + (drop.y - GS.me.y) * gridSize;
     ctx.fillStyle = drop.item === 'wood' ? '#8B4513' : '#7f8c8d'; ctx.fillRect(px - 8, py - 8, 16, 16);
     ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.strokeRect(px - 8, py - 8, 16, 16);
   });
 
-  // Игроки
   GS.players.forEach(p => {
-    const px = cx + (p.x - GS.me.x) * gridSize; const py = cy + (p.y - GS.me.y) * gridSize;
+    const px = cx + (p.x - GS.me.x) * gridSize, py = cy + (p.y - GS.me.y) * gridSize;
     ctx.fillStyle = '#e74c3c'; ctx.fillRect(px - 10, py - 10, 20, 20); ctx.fillStyle = '#f1c40f'; ctx.fillRect(px - 6, py - 20, 12, 12);
   });
 
-  // Я
   ctx.fillStyle = '#3498db'; ctx.fillRect(cx - 10, cy - 10, 20, 20);
   ctx.fillStyle = '#f1c40f'; ctx.fillRect(cx - 6, cy - 20, 12, 12);
   ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(GS.me.angle) * 35, cy + Math.sin(GS.me.angle) * 35); ctx.stroke();
 
-  // Вспышка
   if (GS.attackFlash > 0) {
     ctx.fillStyle = `rgba(255, 255, 255, ${GS.attackFlash / 10})`;
     ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, 2.5 * gridSize, GS.me.angle - 0.6, GS.me.angle + 0.6); ctx.closePath(); ctx.fill();
     GS.attackFlash--;
   }
 
-  // Щит
   if (GS.isBlocking) {
     ctx.strokeStyle = '#0096ff'; ctx.lineWidth = 8;
     ctx.beginPath(); ctx.arc(cx, cy, 30, GS.me.angle - 1.74, GS.me.angle + 1.74); ctx.stroke();
