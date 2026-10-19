@@ -1,21 +1,25 @@
 // ui.js
-window.invData = { wood: 5, apple: 3, shield_wood: 1, axe_wood: 1 };
-window.hotbarData = ['apple', 'sword', 'pickaxe', 'axe'];
-window.equipData = { helmet: null, chest: null, legs: null, boots: null, shield: null, ring: null };
+window.invData = {};
+window.hotbarData = [];
+window.equipData = {};
 
 const getIcon = (id) => id === 'apple' ? '🍎' : id === 'sword' ? '⚔️' : id === 'pickaxe' ? '⛏️' : id === 'axe' ? '🪓' : id === 'shield_wood' ? '🛡️' : id === 'wood' ? '🪵' : '📦';
 
-// Инициализация сеток
 document.addEventListener("DOMContentLoaded", () => {
+  // Создаем сетки
   const invGrid = document.getElementById('inv-grid');
   for (let i = 0; i < 16; i++) invGrid.innerHTML += `<div class="i-slot" data-type="inv" data-index="${i}"></div>`;
+  
   const hotbarInv = document.getElementById('hotbar-inv');
   for (let i = 0; i < 4; i++) hotbarInv.innerHTML += `<div class="i-slot" data-type="hotbar" data-index="${i}"></div>`;
+  
+  // Инициализация событий
+  initDragAndDrop();
   renderUI();
 });
 
 function renderUI() {
-  // Инвентарь
+  // Отрисовка сетки инвентаря
   const invSlots = document.querySelectorAll('#inv-grid .i-slot');
   invSlots.forEach(s => { s.innerHTML = ''; s.dataset.itemId = ''; });
   let idx = 0;
@@ -27,83 +31,124 @@ function renderUI() {
     }
   }
 
-  // Хотбар внутри инвентаря
+  // Отрисовка хотбара в инвентаре
   const hotSlots = document.querySelectorAll('#hotbar-inv .i-slot');
   hotSlots.forEach((s, i) => {
     s.innerHTML = window.hotbarData[i] ? getIcon(window.hotbarData[i]) : '';
     s.dataset.itemId = window.hotbarData[i] || '';
   });
 
-  // Нижний хотбар
+  // Отрисовка нижнего хотбара
   document.querySelectorAll('.h-slot').forEach((s, i) => {
     s.innerHTML = window.hotbarData[i] ? getIcon(window.hotbarData[i]) : '';
   });
 
-  // Экипировка
+  // Отрисовка экипировки
   Object.keys(window.equipData).forEach(slot => {
     const el = document.querySelector(`.eq-slot[data-slot="${slot}"]`);
     if(el) {
       if (window.equipData[slot]) {
         el.style.borderColor = '#00ff00';
-        // Можно добавить иконку поверх
+        el.innerHTML = getIcon(window.equipData[slot]); // Показываем иконку надетого
       } else {
-        el.style.borderColor = '#444';
+        el.style.borderColor = '#333';
+        el.innerHTML = slot === 'helmet' ? '🪖' : slot === 'chest' ? '🥋' : '🛡️';
       }
     }
   });
 }
 
-// Drag and Drop для тача
+// --- DRAG AND DROP (Работает на телефоне и ПК) ---
+let draggedItem = null;
 let dragGhost = null;
-let dragData = null;
 
-function handleDragStart(e, el) {
-  const itemId = el.dataset.itemId;
-  if (!itemId) return;
+function initDragAndDrop() {
+  const interactables = document.querySelectorAll('.i-slot, .eq-slot');
   
-  dragData = { itemId, from: { type: el.dataset.type, index: el.dataset.index, slot: el.dataset.slot } };
+  interactables.forEach(el => {
+    // Для телефонов (Touch)
+    el.addEventListener('touchstart', (e) => startDrag(e, el), { passive: false });
+    el.addEventListener('touchmove', (e) => moveDrag(e), { passive: false });
+    el.addEventListener('touchend', (e) => endDrag(e));
+    
+    // Для ПК (Мышь) - для удобства разработки
+    el.addEventListener('mousedown', (e) => startDrag(e, el));
+  });
+}
+
+function startDrag(e, el) {
+  const itemId = el.dataset.itemId || (el.dataset.type === 'equip' ? window.equipData[el.dataset.slot] : null);
+  if (!itemId) return;
+
+  draggedItem = { 
+    itemId, 
+    from: { type: el.dataset.type, index: el.dataset.index, slot: el.dataset.slot } 
+  };
+
   dragGhost = document.createElement('div');
   dragGhost.className = 'drag-ghost';
   dragGhost.innerText = getIcon(itemId);
   document.body.appendChild(dragGhost);
-  moveGhost(e.touches[0]);
+
+  const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+  const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+  dragGhost.style.left = clientX + 'px';
+  dragGhost.style.top = clientY + 'px';
+  
   e.preventDefault();
 }
 
-function moveGhost(touch) {
-  if (dragGhost) {
-    dragGhost.style.left = touch.clientX + 'px';
-    dragGhost.style.top = touch.clientY + 'px';
-  }
-}
-
-function handleDragEnd(e) {
+function moveDrag(e) {
   if (!dragGhost) return;
-  dragGhost.remove();
-  const touch = e.changedTouches[0];
-  const dropTarget = document.elementFromPoint(touch.clientX, touch.clientY).closest('.i-slot, .eq-slot');
-  
-  if (dropTarget && dropTarget.dataset.type && window.socket) {
-    const to = { type: dropTarget.dataset.type, index: dropTarget.dataset.index, slot: dropTarget.dataset.slot };
-    window.socket.emit('moveItem', { from: dragData.from, to, itemId: dragData.itemId });
-  }
-  dragGhost = null;
-  dragData = null;
+  const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+  const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+  dragGhost.style.left = clientX + 'px';
+  dragGhost.style.top = clientY + 'px';
+  e.preventDefault();
 }
 
-// Навешиваем события после рендера
-setTimeout(() => {
-  document.querySelectorAll('.i-slot, .eq-slot').forEach(el => {
-    el.addEventListener('touchstart', (e) => handleDragStart(e, el), { passive: false });
-    el.addEventListener('touchmove', (e) => { moveGhost(e.touches[0]); e.preventDefault(); }, { passive: false });
-    el.addEventListener('touchend', handleDragEnd);
-  });
+function endDrag(e) {
+  if (!dragGhost || !draggedItem) return;
 
-  document.getElementById('inventory-btn').addEventListener('click', () => {
-    document.getElementById('inv-overlay').classList.add('open');
-    renderUI();
-  });
-  document.getElementById('close-inv').addEventListener('click', () => {
-    document.getElementById('inv-overlay').classList.remove('open');
-  });
-}, 100);
+  const clientX = e.changedTouches ? e.changedTouches[0].clientX : e.clientX;
+  const clientY = e.changedTouches ? e.changedTouches[0].clientY : e.clientY;
+  
+  dragGhost.remove();
+  dragGhost = null;
+
+  const dropTarget = document.elementFromPoint(clientX, clientY).closest('.i-slot, .eq-slot');
+  
+  if (dropTarget && window.GameState && window.GameState.socket) {
+    const to = { 
+      type: dropTarget.dataset.type, 
+      index: dropTarget.dataset.index, 
+      slot: dropTarget.dataset.slot 
+    };
+    
+    // Отправляем на сервер, чтобы он сохранил
+    window.GameState.socket.emit('moveItem', { 
+      from: draggedItem.from, 
+      to, 
+      itemId: draggedItem.itemId 
+    });
+  }
+  
+  draggedItem = null;
+}
+
+// Кнопки открытия/закрытия
+document.getElementById('inventory-btn').addEventListener('click', () => {
+  document.getElementById('inv-overlay').classList.add('open');
+  renderUI();
+});
+document.getElementById('close-inv').addEventListener('click', () => {
+  document.getElementById('inv-overlay').classList.remove('open');
+});
+
+// Обновление UI при получении данных с сервера
+window.updateUIFromServer = function(inv, hotbar, equip) {
+  window.invData = inv;
+  window.hotbarData = hotbar;
+  window.equipData = equip;
+  renderUI();
+};
