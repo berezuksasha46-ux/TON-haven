@@ -1,18 +1,21 @@
 import pg from 'pg';
 const { Pool } = pg;
 
-// Пул соединений с базой данных (Supabase)
+// КРИТИЧЕСКИ ВАЖНО: Transaction Pooler (порт 6543) + pgbouncer=true
+// Это предотвращает исчерпание соединений Supabase из Node.js [citation:2][citation:29]
+const connectionString = process.env.DATABASE_URL?.includes('pooler.supabase.com:6543')
+  ? process.env.DATABASE_URL
+  : process.env.DATABASE_URL?.replace(':5432/', ':6543/') + '?pgbouncer=true&connection_limit=1';
+
 export const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false } // Обязательно для Supabase
+  connectionString,
+  ssl: { rejectUnauthorized: false },
+  max: 5, // Маленький пул для Render Free
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 10000,
 });
 
-// Проверка подключения при старте
 pool.connect((err, client, release) => {
-  if (err) {
-    console.error('❌ Ошибка подключения к БД:', err.message);
-  } else {
-    console.log('✅ База данных Supabase подключена успешно');
-    release();
-  }
+  if (err) console.error('❌ DB Error:', err.message);
+  else { console.log('✅ DB Connected (Supavisor:6543)'); release(); }
 });
