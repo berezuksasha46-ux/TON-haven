@@ -13,6 +13,7 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../client')));
 
+// Авторизация (создает игрока при первом входе)
 app.post('/api/auth', async (req, res) => {
   const { devTgId } = req.body;
   const tgId = devTgId || Math.floor(Math.random() * 1000000); 
