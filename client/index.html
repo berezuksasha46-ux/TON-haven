@@ -9,7 +9,6 @@
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-  <!-- HUD -->
   <div id="hud">
     <div class="hp-bar">
       <div class="hp-fill" id="hp-fill"></div>
@@ -17,14 +16,11 @@
     </div>
   </div>
 
-  <!-- Джойстики -->
   <div id="joy-left" class="joy"><div class="knob" id="knob-left"></div></div>
   <div id="joy-right" class="joy"><div class="knob" id="knob-right"></div></div>
 
-  <!-- Кнопка блока -->
   <div id="shield-btn">🛡️</div>
 
-  <!-- Хотбар (4 слота) -->
   <div id="hotbar">
     <div class="h-slot active" data-index="0"></div>
     <div class="h-slot" data-index="1"></div>
@@ -32,10 +28,8 @@
     <div class="h-slot" data-index="3"></div>
   </div>
 
-  <!-- Кнопка инвентаря -->
   <div id="inventory-btn">🎒</div>
 
-  <!-- Окно инвентаря (будет стилизовано на Этапе 3) -->
   <div id="inv-overlay">
     <div id="inv-window">
       <button class="close-btn" id="close-inv">✖</button>
@@ -54,7 +48,6 @@
 
   <canvas id="game"></canvas>
 
-  <!-- Подключение скриптов -->
   <script src="js/game.js"></script>
   <script src="js/ui.js"></script>
 </body>
