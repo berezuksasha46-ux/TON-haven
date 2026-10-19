@@ -1,6 +1,10 @@
 /* Сброс и базовые настройки */
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-html, body { margin: 0; padding: 0; overflow: hidden; background: #121212; font-family: 'Courier New', monospace; -webkit-user-select: none; user-select: none; width: 100%; height: 100%; position: fixed; overscroll-behavior: none; }
+html, body { 
+  margin: 0; padding: 0; overflow: hidden; background: #121212; 
+  font-family: 'Courier New', monospace; -webkit-user-select: none; user-select: none; 
+  width: 100%; height: 100%; position: fixed; overscroll-behavior: none; 
+}
 canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; touch-action: none; }
 
 /* HUD (Здоровье) */
@@ -44,7 +48,6 @@ canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; 
 /* Экипировка */
 .equip-container { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .eq-slot { height: 50px; background: #151515; border: 2px dashed #444; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 24px; color: #fff; position: relative; }
-.eq-slot.filled { border-style: solid; border-color: #00ff00; }
 
 /* Инвентарь */
 .grid-container { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; background: #151515; padding: 10px; border-radius: 10px; border: 1px solid #333; }
