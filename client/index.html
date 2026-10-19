@@ -9,12 +9,20 @@
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-  <div id="hud"><div class="hp-bar"><div class="hp-fill" id="hp-fill"></div><span id="hp-text">100 / 100</span></div></div>
+  <!-- Здоровье -->
+  <div id="hud">
+    <div class="hp-bar">
+      <div class="hp-fill" id="hp-fill"></div>
+      <span id="hp-text">100 / 100</span>
+    </div>
+  </div>
   
+  <!-- Управление -->
   <div id="joy-left" class="joy"><div class="knob" id="knob-left"></div></div>
   <div id="joy-right" class="joy"><div class="knob" id="knob-right"></div></div>
   <div id="shield-btn">🛡️</div>
   
+  <!-- Слоты быстрого доступа -->
   <div id="hotbar">
     <div class="h-slot active" data-index="0"></div>
     <div class="h-slot" data-index="1"></div>
@@ -22,41 +30,57 @@
     <div class="h-slot" data-index="3"></div>
   </div>
 
-  <div id="inventory-btn">🎒</div>
-  <div id="craft-btn">⚒️</div>
-  <div id="place-btn">🔨</div>
+  <!-- Кнопки UI (в контейнере, чтобы не наезжали) -->
+  <div id="ui-buttons">
+    <div id="inventory-btn" title="Инвентарь">🎒</div>
+    <div id="craft-btn" title="Крафт">⚒️</div>
+    <div id="place-btn" title="Установить станок">🔨</div>
+  </div>
 
-  <!-- Тултип (Характеристики предмета) -->
+  <!-- Всплывающая подсказка (Тултип) -->
   <div id="tooltip"></div>
 
-  <!-- Инвентарь -->
+  <!-- Модальное окно: Инвентарь -->
   <div id="inv-overlay">
     <div id="inv-window">
       <button class="close-btn" id="close-inv">✖</button>
-      <div class="char-preview"><div class="char-sprite"><div class="char-head"></div></div></div>
-      <div class="equip-container">
-        <div class="eq-slot" data-type="equip" data-slot="helmet">🪖</div>
-        <div class="eq-slot" data-type="equip" data-slot="chest">🥋</div>
-        <div class="eq-slot" data-type="equip" data-slot="legs">👖</div>
-        <div class="eq-slot" data-type="equip" data-slot="boots">👢</div>
-        <div class="eq-slot" data-type="equip" data-slot="shield">🛡️</div>
-        <div class="eq-slot" data-type="equip" data-slot="ring">💍</div>
+      
+      <!-- Превью персонажа -->
+      <div class="char-preview">
+        <div class="char-sprite"><div class="char-head"></div></div>
       </div>
+      
+      <!-- Слоты экипировки -->
+      <div class="equip-container">
+        <div class="eq-slot" data-type="equip" data-slot="helmet" title="Шлем"></div>
+        <div class="eq-slot" data-type="equip" data-slot="chest" title="Нагрудник"></div>
+        <div class="eq-slot" data-type="equip" data-slot="legs" title="Штаны"></div>
+        <div class="eq-slot" data-type="equip" data-slot="boots" title="Ботинки"></div>
+        <div class="eq-slot" data-type="equip" data-slot="shield" title="Щит"></div>
+        <div class="eq-slot" data-type="equip" data-slot="ring" title="Кольцо"></div>
+      </div>
+      
+      <!-- Основной инвентарь (16 слотов) -->
       <div class="grid-container" id="inv-grid"></div>
+      
+      <!-- Хотбар внутри инвентаря (дубликат для удобства) -->
       <div class="hotbar-in-inv" id="hotbar-inv"></div>
     </div>
   </div>
 
-  <!-- Верстак -->
+  <!-- Модальное окно: Крафт -->
   <div id="craft-overlay">
     <div id="craft-window">
       <button class="close-btn" id="close-craft">✖</button>
-      <h3 style="color:white; text-align:center; margin:0 0 10px 0;">Крафт</h3>
+      <h3 style="color:white; text-align:center; margin:0 0 10px 0;">Верстак</h3>
       <div id="craft-list"></div>
     </div>
   </div>
 
+  <!-- Игровое поле -->
   <canvas id="game"></canvas>
+  
+  <!-- Скрипты -->
   <script src="js/ui.js"></script>
   <script src="js/game.js"></script>
 </body>
